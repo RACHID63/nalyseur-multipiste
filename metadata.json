@@ -1,0 +1,11 @@
+{
+  "name": "Suno Rhythm Master",
+  "description": "Assistant de création musicale pour Suno AI : extrayez des rythmes de fichiers audio, transcrivez-les en MIDI et générez des prompts et paroles optimisés avec Gemini AI.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "Audio Processing",
+    "Gemini AI Integration"
+  ]
+}
