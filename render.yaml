@@ -1,0 +1,21 @@
+# Render Blueprint — déploiement en 1 clic
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: nalyseur-multipiste
+    runtime: node
+    plan: free
+    region: frankfurt
+    nodeVersion: 20.18.1
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    healthCheckPath: /api/providers
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Renseignez vos clés API dans le dashboard Render (elles restent secrètes) :
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
