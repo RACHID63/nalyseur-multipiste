@@ -1,0 +1,10 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    # Les clés sont lues depuis le fichier .env (créez-le sur le VPS,
+    # il est ignoré par Git et ne sera jamais publié).
+    env_file:
+      - .env
