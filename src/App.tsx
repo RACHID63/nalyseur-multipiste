@@ -5,14 +5,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Music, Share2, Send, Activity, Drum, Cpu, RefreshCw, AlertCircle, FileCode, LayoutDashboard, Copy, Check, Clock, Upload, Plus, Trash2, Mic2, Dices, Mic, Download, Info, Music4, Zap, Waves, Loader2
+  Music, Share2, Send, Activity, Drum, Cpu, RefreshCw, AlertCircle, FileCode, LayoutDashboard, Copy, Check, Clock, Upload, Plus, Trash2, Mic2, Dices, Mic, Download, Info, Music4, Zap, Waves, Loader2, ShieldCheck
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
-
-// --- CONFIGURATION GEMINI ---
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 interface Track {
   id: number;
@@ -157,9 +153,21 @@ const App = () => {
       themePlaceholder: "Ex. L'Espace...",
       generateButton: "Générer l'Arrangement pour Suno AI",
       generating: "ANALYSE EXPERTE EN COURS...",
+      aiEngineLabel: "Moteur IA & Paramètre DeepSeek",
+      aiProviderGemini: "Gemini 4 Hydrogen (Serveur)",
+      aiProviderDeepSeek: "DeepSeek API (Serveur Sécurisé)",
+      deepseekModelLabel: "Modèle DeepSeek",
+      deepseekChatOption: "deepseek-chat (V3 - Rapide & JSON)",
+      deepseekReasonerOption: "deepseek-reasoner (R1 - Raisonnement)",
+      deepseekTempLabel: "Créativité (Température)",
+      serverSecretReady: "Clé serveur active",
+      serverSecretMissing: "Clé à configurer dans Settings > Secrets",
       errorWaitAudio: "Veuillez attendre la fin du traitement audio avant de générer.",
       errorNoRhythm: "Veuillez entrer au moins un motif rythmique pour l'un des instruments.",
-      errorGemini: "Désolé, une erreur est survenue lors de la génération avec Gemini. Vérifiez votre connexion ou réessayez.",
+      errorGemini: "Désolé, une erreur est survenue lors de la génération IA. Vérifiez votre configuration dans Settings > Secrets ou réessayez.",
+      errorDeepSeekMissing: "La variable DEEPSEEK_API_KEY n'est pas configurée côté serveur. Ajoutez-la dans Settings > Secrets.",
+      errorDeepSeekInvalid: "Clé DeepSeek refusée par l'API. Vérifiez DEEPSEEK_API_KEY dans Settings > Secrets.",
+      errorRateLimit: "Limite de requêtes atteinte. Patientez une minute avant de relancer.",
       errorFileSize: "Fichier gigantesque ({{size}} Mo). La limite extrême de protection est de 150 Mo.",
       errorDecoding: "Erreur de décodage du fichier audio.",
       stylePrompt: "Style Prompt",
@@ -184,8 +192,8 @@ const App = () => {
       help4Body: "Utilisez les cases à cocher sur chaque piste pour décider quand l'instrument intervient : Début, Milieu, Fin ou sur Tout le morceau. L'option IA laisse l'algorithme décider de l'arrangement idéal.",
       help5Title: "Langues & Paroles",
       help5Body: "Générez des paroles en Français, Anglais ou en version Bilingue. Cochez Rythme dans paroles pour que Suno intègre vos onomatopées rythmiques comme percussions vocales.",
-      helpGeminiTitle: "Génération Gemini AI",
-      helpGeminiBody: "L'IA fusionne toutes vos pistes et réglages pour créer un prompt Suno AI cohérent, structuré avec balises [Verse] / [Chorus] et des paroles thématiques.",
+      helpGeminiTitle: "Génération Gemini & DeepSeek (Serveur Sécurisé)",
+      helpGeminiBody: "Vos pistes et paramètres sont envoyés à notre serveur backend sécurisé qui pilote Gemini ou DeepSeek via les secrets serveur (GEMINI_API_KEY / DEEPSEEK_API_KEY) sans jamais exposer de clé dans le navigateur.",
       importFullMusic: "Importer une musique complète",
       importingMusic: "Analyse intelligente de la musique...",
       importSuccess: "Analyse complète terminée ! Les pistes ont été configurées.",
@@ -315,9 +323,21 @@ const App = () => {
       themePlaceholder: "Ex. Outer Space...",
       generateButton: "Generate Suno AI Arrangement",
       generating: "EXPERT ANALYSIS IN PROGRESS...",
+      aiEngineLabel: "AI Engine & DeepSeek Parameter",
+      aiProviderGemini: "Gemini 4 Hydrogen (Server)",
+      aiProviderDeepSeek: "DeepSeek API (Secure Server)",
+      deepseekModelLabel: "DeepSeek Model",
+      deepseekChatOption: "deepseek-chat (V3 - Fast & JSON)",
+      deepseekReasonerOption: "deepseek-reasoner (R1 - Reasoning)",
+      deepseekTempLabel: "Creativity (Temperature)",
+      serverSecretReady: "Server secret active",
+      serverSecretMissing: "Configure in Settings > Secrets",
       errorWaitAudio: "Please wait for audio processing to finish before generating.",
       errorNoRhythm: "Please enter at least one rhythmic pattern for one of the instruments.",
-      errorGemini: "Sorry, an error occurred during Gemini generation. Check your connection or try again.",
+      errorGemini: "Sorry, an error occurred during AI generation. Check Settings > Secrets or try again.",
+      errorDeepSeekMissing: "DEEPSEEK_API_KEY is not configured on the server. Add it in Settings > Secrets.",
+      errorDeepSeekInvalid: "DeepSeek API key rejected. Verify DEEPSEEK_API_KEY in Settings > Secrets.",
+      errorRateLimit: "Rate limit reached. Please wait a minute before trying again.",
       errorFileSize: "Giant file ({{size}} MB). The extreme protection limit is 150 MB.",
       errorDecoding: "Error decoding audio file.",
       stylePrompt: "Style Prompt",
@@ -342,8 +362,8 @@ const App = () => {
       help4Body: "Use checkboxes on each track to decide when the instrument plays: Start, Middle, End or throughout the Whole song. The AI option lets the algorithm decide the ideal arrangement.",
       help5Title: "Languages & Lyrics",
       help5Body: "Generate lyrics in French, English, or Bilingual version. Check Rhythm in lyrics so Suno integrates your rhythmic onomatopoeia as vocal percussions.",
-      helpGeminiTitle: "Gemini AI Generation",
-      helpGeminiBody: "The AI fuses all your tracks and settings to create a coherent Suno AI prompt, structured with [Verse] / [Chorus] tags and thematic lyrics.",
+      helpGeminiTitle: "Gemini & DeepSeek Server Generation",
+      helpGeminiBody: "Your tracks and settings are sent to our secure backend proxy which calls Gemini or DeepSeek using server-side Secrets (GEMINI_API_KEY / DEEPSEEK_API_KEY) without ever exposing keys to the browser.",
       importFullMusic: "Import Full Music",
       importingMusic: "Intelligent music analysis...",
       importSuccess: "Full analysis complete! Tracks have been configured.",
@@ -449,6 +469,11 @@ const App = () => {
   const [keepRhythmAsLyrics, setKeepRhythmAsLyrics] = useState(false);
   const [importedLyrics, setImportedLyrics] = useState("");
   const [isImportingFull, setIsImportingFull] = useState(false);
+
+  const [aiProvider, setAiProvider] = useState<'gemini' | 'deepseek'>('gemini');
+  const [deepseekModel, setDeepseekModel] = useState<'deepseek-chat' | 'deepseek-reasoner'>('deepseek-chat');
+  const [deepseekTemperature, setDeepseekTemperature] = useState<number>(0.7);
+  const [providerStatus, setProviderStatus] = useState<{ gemini: boolean; deepseek: boolean } | null>(null);
   
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ style: string; lyrics: string; antiPrompt: string } | null>(null);
@@ -458,6 +483,20 @@ const App = () => {
   const [copiedStyle, setCopiedStyle] = useState(false);
   const [copiedLyrics, setCopiedLyrics] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/providers')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.gemini && data?.deepseek) {
+          setProviderStatus({
+            gemini: Boolean(data.gemini.configured),
+            deepseek: Boolean(data.deepseek.configured),
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Sync state values when language changes if they were defaults
   useEffect(() => {
@@ -972,13 +1011,13 @@ const App = () => {
 
   const analyzeRhythm = async () => {
     if (instrumentTracks.some(t => t.processingState === 'decoding' || t.processingState === 'analyzing')) {
-      setError("Veuillez attendre la fin du traitement audio avant de générer.");
+      setError(cur.errorWaitAudio);
       return;
     }
 
     const hasAtLeastOneRhythm = instrumentTracks.some(t => t.rhythm.trim() !== "");
     if (!hasAtLeastOneRhythm) {
-      setError("Veuillez entrer au moins un motif rythmique pour l'un des instruments.");
+      setError(cur.errorNoRhythm);
       return;
     }
 
@@ -986,78 +1025,76 @@ const App = () => {
     setError(null);
     setActiveReaction(null);
 
-    const instrumentsInfo = instrumentTracks.map(t => {
-      const name = t.name === cur.personnalise ? t.customName : t.name;
-      const posLabels = t.timelinePositions.map(pos => {
-        return cur.posLabels[pos as keyof typeof cur.posLabels] || pos;
-      }).join(', ');
-      return `- ${name}: [${t.rhythm}] (${currentLang === 'fr' ? 'Position' : 'Position'}: ${posLabels})`;
-    }).join('\n');
+    const tracksPayload = instrumentTracks
+      .filter(t => t.rhythm.trim() !== "")
+      .map(t => {
+        const name = t.name === cur.personnalise ? t.customName : t.name;
+        const positions = t.timelinePositions
+          .map(pos => cur.posLabels[pos as keyof typeof cur.posLabels] || pos)
+          .join(', ');
+        return {
+          name: name || 'Instrument',
+          rhythm: t.rhythm,
+          positions: positions || 'AI',
+        };
+      });
 
     let styleToUse = selectedStyle === cur.personnalise ? customStyle : selectedStyle;
     if (selectedStyle === "Industrial Pop (Gesaffelstein style)") {
       styleToUse = "A dark, hypnotic industrial pop track inspired by Gesaffelstein, featuring aggressive, distorted analog synthesizers, sharp rhythmic stabs, and a heavy, thumping techno-inflected beat. The production is clinically precise with cavernous reverb on metallic percussive hits, creating a cold, menacing atmosphere with high-fidelity, polished urban soundscapes.";
     }
 
-    const systemPrompt = currentLang === 'fr' 
-      ? `Tu es un expert en composition musicale et un pro du logiciel Suno AI. Ta mission est de transformer ces structures rythmiques en un prompt de STYLE et des PAROLES optimisées pour Suno AI.`
-      : `You are a music composition expert and a Suno AI pro. Your mission is to transform these rhythmic structures into a STYLE prompt and optimized LYRICS for Suno AI.`;
-
-    const prompt = `${systemPrompt}
-
-${currentLang === 'fr' ? 'DONNÉES D\'ENTRÉE' : 'INPUT DATA'} :
-- ${currentLang === 'fr' ? 'Rythmes par instruments' : 'Rhythms by instruments'} : 
-${instrumentsInfo}
-- ${currentLang === 'fr' ? 'Style sélectionné' : 'Selected style'} : ${styleToUse}
-- ${currentLang === 'fr' ? 'Langue des paroles' : 'Lyrics language'} : ${selectedLanguage}
-- ${currentLang === 'fr' ? 'Exigence de qualité Vocale (MANDATOIRE)' : 'Vocal Quality Requirement (MANDATORY)'} : "Studio-grade polished vocals, clinically clean voice, powerful forward projection, heavy de-essing, no sibilance, zero breathiness, dry vocal mix, crisp articulation, high-fidelity recording."
-- ${currentLang === 'fr' ? 'Voix souhaitée' : 'Desired voice'} : ${selectedVoice}
-- ${currentLang === 'fr' ? 'Caractéristiques de la voix' : 'Voice characteristics'} : ${selectedVoiceChar}
-- ${currentLang === 'fr' ? 'Signature rythmique (Measure)' : 'Time Signature (Measure)'} : ${timeSignature}
-- ${currentLang === 'fr' ? 'Thème ou émotion' : 'Theme or emotion'} : ${desiredTheme || 'Non spécifié'}
-- ${currentLang === 'fr' ? 'Format long (Full length)' : 'Long format (Full length)'} : ${isLongFormat ? (currentLang === 'fr' ? 'Oui' : 'Yes') : (currentLang === 'fr' ? 'Non' : 'No')}
-
-${currentLang === 'fr' ? 'INSTRUCTIONS D\'OUTPUT' : 'OUTPUT INSTRUCTIONS'} :
-${currentLang === 'fr' ? 'Génère une réponse structurée ainsi :' : 'Generate a structured response as follows:'}
-1. **Suno Style Prompt** : ${currentLang === 'fr' ? 'Une chaîne de mots-clés séparés par des virgules, incluant les genres, l\'humeur, les instruments, les directives rythmiques extraites ET l\'exigence de qualité vocale MANDATOIRE fournie ci-dessus.' : 'A comma-separated string of keywords, including genres, mood, instruments, extracted rhythmic directives AND the MANDATORY vocal quality requirement provided above.'} Max 20 character limit.
-2. **Suno Anti-Prompt** : ${currentLang === 'fr' ? 'Utilise exactement cette chaîne pour exclure les défauts vocaux' : 'Use exactly this string to exclude vocal defects'} : "Sibilance, breathy vocals, whispering, airy voice, hissing, background noise, low-fidelity, muffled, harsh treble, whistling 's'".
-3. **Suno Lyrics** : ${currentLang === 'fr' ? 'Les paroles avec des balises de structure [Verse], [Chorus], [Bridge], [Outro].' : 'Lyrics with structure tags [Verse], [Chorus], [Bridge], [Outro].'}
-   ${currentLang === 'fr' ? 'CONTRAINTES DE FORMATAGE (MANDATOIRE)' : 'FORMATTING CONSTRAINTS (MANDATORY)'} :
-   - ${currentLang === 'fr' ? 'Intégrer le STYLE de musique et les INSTRUMENTS directement avec leurs motifs rythmiques dans les paroles en utilisant exclusivement des crochets.' : 'Integrate the music STYLE and INSTRUMENTS directly with their rhythmic patterns in the lyrics using ONLY brackets.'} 
-   - ${currentLang === 'fr' ? 'Format exigé' : 'Required format'} : [Style Nom_Instrument Motif_Rythmique] (example : [Rock Guitare ti ti ta chack]).
-   - ${currentLang === 'fr' ? 'NE JAMAIS utiliser de parenthèses ( ) pour le style ou toute autre annotation.' : 'NEVER use parentheses ( ) for style or any other annotation.'}
-   - ${currentLang === 'fr' ? 'Intégrer les onomatopées rythmiques fournies (comme "DUM", "ta", "ti") de manière fluide dans le texte des paroles ou en balises de structure.' : 'Integrate the provided rhythmic onomatopoeia (like "DUM", "ta", "ti") fluidly into the lyrics text or structure tags.'}
-
-${currentLang === 'fr' ? 'Réponds uniquement au format JSON suivant' : 'Respond only in the following JSON format'} :
-{
-  "style": "...",
-  "antiPrompt": "...",
-  "lyrics": "..."
-}`;
-
     try {
-      const response = await genAI.models.generateContent({
-        model: "gemini-2.0-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-        }
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          provider: aiProvider,
+          deepseekModel,
+          deepseekTemperature,
+          lang: currentLang,
+          tracks: tracksPayload,
+          style: styleToUse,
+          lyricsLanguage: selectedLanguage,
+          voice: selectedVoice,
+          voiceChar: selectedVoiceChar,
+          timeSignature,
+          theme: desiredTheme,
+          isLongFormat,
+          keepRhythmAsLyrics,
+        }),
       });
-      
-      const text = response.text;
-      if (text) {
-        const parsed = JSON.parse(text);
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const code = data?.code;
+        if (code === 'MISSING_DEEPSEEK_KEY') {
+          throw new Error(cur.errorDeepSeekMissing);
+        }
+        if (code === 'INVALID_DEEPSEEK_KEY') {
+          throw new Error(cur.errorDeepSeekInvalid);
+        }
+        if (code === 'RATE_LIMITED') {
+          throw new Error(cur.errorRateLimit);
+        }
+        throw new Error(data?.error || cur.errorGemini);
+      }
+
+      if (data && data.style && data.lyrics) {
         setResult({
-          ...parsed,
-          style: `${parsed.style} [réalised by sofwar DJ-R LAIEB] [ https://aistudio.google.com/apps/cdffb8f5-43de-45ac-9eaa-308108c0e261]`,
-          lyrics: `${parsed.lyrics}\n\n[réalised by sofwar DJ-R LAIEB] [ https://aistudio.google.com/apps/cdffb8f5-43de-45ac-9eaa-308108c0e261]`
+          style: `${data.style} [réalised by sofwar DJ-R LAIEB] [ https://aistudio.google.com/apps/cdffb8f5-43de-45ac-9eaa-308108c0e261]`,
+          antiPrompt: data.antiPrompt || "",
+          lyrics: `${data.lyrics}\n\n[réalised by sofwar DJ-R LAIEB] [ https://aistudio.google.com/apps/cdffb8f5-43de-45ac-9eaa-308108c0e261]`
         });
       } else {
-        throw new Error("Aucune réponse de l'IA.");
+        throw new Error(cur.errorGemini);
       }
     } catch (err: any) {
-      console.error("Erreur Gemini:", err);
-      setError("Désolé, une erreur est survenue lors de la génération avec Gemini. Vérifiez votre connexion ou réessayez.");
+      console.error("Erreur génération IA:", err);
+      setError(err?.message || cur.errorGemini);
     } finally {
       setLoading(false);
     }
@@ -1477,6 +1514,75 @@ ${currentLang === 'fr' ? 'Réponds uniquement au format JSON suivant' : 'Respond
                       value={desiredTheme}
                       onChange={(e) => setDesiredTheme(e.target.value)}
                     />
+                  </div>
+                </div>
+
+                {/* AI Provider & DeepSeek Parameter Block (Secure Server-Side Keys) */}
+                <div className="mt-6 pt-6 border-t border-black/10">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                    <div className="flex items-center gap-2.5">
+                      <Cpu className="w-5 h-5 text-blue-950" />
+                      <span className="text-[14px] font-black text-blue-950 uppercase tracking-widest">
+                        {cur.aiEngineLabel}
+                      </span>
+                    </div>
+                    {providerStatus && (
+                      <div className="flex items-center gap-2 text-xs font-bold text-neutral-700 bg-white/60 px-3.5 py-1.5 rounded-xl border border-black/5">
+                        <ShieldCheck className={`w-4 h-4 ${(aiProvider === 'gemini' ? providerStatus.gemini : providerStatus.deepseek) ? 'text-emerald-600' : 'text-amber-600'}`} />
+                        <span>
+                          {(aiProvider === 'gemini' ? providerStatus.gemini : providerStatus.deepseek)
+                            ? cur.serverSecretReady
+                            : cur.serverSecretMissing}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <select
+                        className="w-full bg-[#f5f5f7] text-neutral-800 rounded-xl px-4 py-3 border-2 border-black/5 focus:outline-none focus:border-blue-400 font-bold text-xs shadow-inner"
+                        value={aiProvider}
+                        onChange={(e) => setAiProvider(e.target.value as 'gemini' | 'deepseek')}
+                        aria-label={cur.aiEngineLabel}
+                      >
+                        <option value="gemini">{cur.aiProviderGemini}</option>
+                        <option value="deepseek">{cur.aiProviderDeepSeek}</option>
+                      </select>
+                    </div>
+
+                    {aiProvider === 'deepseek' && (
+                      <>
+                        <div className="space-y-1.5">
+                          <select
+                            className="w-full bg-[#f5f5f7] text-neutral-800 rounded-xl px-4 py-3 border-2 border-black/5 focus:outline-none focus:border-blue-400 font-bold text-xs shadow-inner"
+                            value={deepseekModel}
+                            onChange={(e) => setDeepseekModel(e.target.value as 'deepseek-chat' | 'deepseek-reasoner')}
+                            aria-label={cur.deepseekModelLabel}
+                          >
+                            <option value="deepseek-chat">{cur.deepseekChatOption}</option>
+                            <option value="deepseek-reasoner">{cur.deepseekReasonerOption}</option>
+                          </select>
+                        </div>
+
+                        {deepseekModel === 'deepseek-chat' && (
+                          <div className="flex items-center gap-3 bg-[#f5f5f7] rounded-xl px-4 py-2.5 border-2 border-black/5 shadow-inner">
+                            <span className="text-xs font-black text-blue-950 whitespace-nowrap">
+                              {cur.deepseekTempLabel}: {deepseekTemperature.toFixed(1)}
+                            </span>
+                            <input
+                              type="range"
+                              min="0"
+                              max="1.5"
+                              step="0.1"
+                              value={deepseekTemperature}
+                              onChange={(e) => setDeepseekTemperature(parseFloat(e.target.value))}
+                              className="w-full accent-blue-600 cursor-pointer"
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               </section>

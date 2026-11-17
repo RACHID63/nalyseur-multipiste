@@ -6,6 +6,7 @@
   ],
   "majorCapabilities": [
     "Audio Processing",
-    "Gemini AI Integration"
+    "Gemini AI Integration",
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }
