@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Install dependencies (full install: `tsx` runs server.ts in production)
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 # Copy sources and build the React front-end
 COPY . .
