@@ -6,6 +6,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+import nodemailer from 'nodemailer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +15,8 @@ const PORT = Number(process.env.PORT) || 3000;
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 const LOCK_FILE_PATH = path.join(__dirname, '.engine-lock.json');
 const TOKEN_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const RESET_CODE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const DEFAULT_RECOVERY_EMAIL = (process.env.RECOVERY_EMAIL?.trim() || 'rachid.laieb@gmail.com').toLowerCase();
 
 type AiProvider = 'gemini' | 'deepseek';
 type DeepSeekModel = 'deepseek-chat' | 'deepseek-reasoner';
@@ -53,11 +56,34 @@ interface EngineLockStore {
   hash: string;
   hmacSecret: string;
   tokenVersion: number;
+  recoveryEmail: string;
+  resetCodeSalt?: string;
+  resetCodeHash?: string;
+  resetCodeExpiresAt?: number;
+  resetAttempts?: number;
   updatedAt: string;
 }
 
 const DEFAULT_ANTI_PROMPT =
   "Sibilance, breathy vocals, whispering, airy voice, hissing, background noise, low-fidelity, muffled, harsh treble, whistling 's'";
+
+function isValidEmail(email: string): boolean {
+  return email.length <= 160 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+}
+
+function maskEmail(email: string): string {
+  const parts = email.split('@');
+  if (parts.length !== 2) return '***';
+  const [local, domain] = parts;
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}***@${domain}`;
+}
+
+function emailsEqualTimingSafe(a: string, b: string): boolean {
+  const normA = crypto.createHash('sha256').update(a.trim().toLowerCase()).digest();
+  const normB = crypto.createHash('sha256').update(b.trim().toLowerCase()).digest();
+  return crypto.timingSafeEqual(normA, normB);
+}
 
 // --- PASSWORD VAULT & TOKEN HELPERS ---
 let runtimeFallbackHmacSecret = crypto.randomBytes(32).toString('hex');
@@ -73,11 +99,21 @@ function readLockStore(): EngineLockStore | null {
       typeof parsed.hmacSecret === 'string' &&
       typeof parsed.tokenVersion === 'number'
     ) {
+      const storedEmail =
+        typeof parsed.recoveryEmail === 'string' && isValidEmail(parsed.recoveryEmail.trim())
+          ? parsed.recoveryEmail.trim().toLowerCase()
+          : DEFAULT_RECOVERY_EMAIL;
+
       return {
         salt: parsed.salt,
         hash: parsed.hash,
         hmacSecret: parsed.hmacSecret,
         tokenVersion: parsed.tokenVersion,
+        recoveryEmail: storedEmail,
+        resetCodeSalt: typeof parsed.resetCodeSalt === 'string' ? parsed.resetCodeSalt : undefined,
+        resetCodeHash: typeof parsed.resetCodeHash === 'string' ? parsed.resetCodeHash : undefined,
+        resetCodeExpiresAt: typeof parsed.resetCodeExpiresAt === 'number' ? parsed.resetCodeExpiresAt : undefined,
+        resetAttempts: typeof parsed.resetAttempts === 'number' ? parsed.resetAttempts : undefined,
         updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
       };
     }
@@ -167,6 +203,124 @@ function verifyEngineToken(token: string | undefined, store: EngineLockStore | n
 // --- RATE LIMITERS ---
 const generateRateMap = new Map<string, number[]>();
 const authRateMap = new Map<string, number[]>();
+const resetRateMap = new Map<string, number[]>();
+
+// --- EMAIL RECOVERY DELIVERY ---
+function getEmailTransportStatus(): { configured: boolean; mode: 'smtp' | 'resend' | 'none' } {
+  const hasSmtp =
+    Boolean(process.env.SMTP_HOST?.trim() && process.env.SMTP_USER?.trim() && process.env.SMTP_PASS?.trim()) ||
+    Boolean(process.env.GMAIL_USER?.trim() && process.env.GMAIL_APP_PASSWORD?.trim());
+  if (hasSmtp) {
+    return { configured: true, mode: 'smtp' };
+  }
+  if (process.env.RESEND_API_KEY?.trim()) {
+    return { configured: true, mode: 'resend' };
+  }
+  return { configured: false, mode: 'none' };
+}
+
+async function sendPasswordResetEmail(toEmail: string, resetCode: string, lang: 'fr' | 'en'): Promise<void> {
+  const transportStatus = getEmailTransportStatus();
+  if (!transportStatus.configured) {
+    throw new Error('EMAIL_DELIVERY_NOT_CONFIGURED');
+  }
+
+  const isFr = lang !== 'en';
+  const subject = isFr
+    ? 'Code de réinitialisation — Multi-Track Analyzer (Suno AI)'
+    : 'Password Reset Code — Multi-Track Analyzer (Suno AI)';
+
+  const textBody = isFr
+    ? [
+        'Bonjour,',
+        '',
+        'Vous avez demandé la réinitialisation du mot de passe qui protège la sélection et les clés API IA dans Multi-Track Analyzer.',
+        '',
+        `Votre code de vérification à usage unique : ${resetCode}`,
+        '',
+        'Ce code est valable pendant 15 minutes.',
+        'Si vous n’êtes pas à l’origine de cette demande, ignorez simplement cet e-mail.',
+      ].join('\n')
+    : [
+        'Hello,',
+        '',
+        'You requested a password reset for the AI engine lock in Multi-Track Analyzer.',
+        '',
+        `Your single-use verification code: ${resetCode}`,
+        '',
+        'This code expires in 15 minutes.',
+        'If you did not request this reset, you can safely ignore this email.',
+      ].join('\n');
+
+  const htmlBody = isFr
+    ? `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#f8fafc;border-radius:16px;border:1px solid #e2e8f0;color:#0f172a;">
+        <h2 style="margin:0 0 12px;color:#1e3a8a;">Réinitialisation du mot de passe IA</h2>
+        <p style="font-size:14px;line-height:1.6;">Vous avez demandé à réinitialiser le mot de passe qui verrouille l'accès aux moteurs API (Gemini &amp; DeepSeek) dans <strong>Multi-Track Analyzer</strong>.</p>
+        <div style="margin:20px 0;padding:16px;background:#0f172a;color:#fbbf24;border-radius:12px;text-align:center;font-size:24px;font-weight:bold;letter-spacing:4px;">${resetCode}</div>
+        <p style="font-size:13px;color:#475569;">Ce code à usage unique expire dans <strong>15 minutes</strong>. Saisissez-le dans l'application pour définir votre nouveau mot de passe.</p>
+      </div>`
+    : `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;background:#f8fafc;border-radius:16px;border:1px solid #e2e8f0;color:#0f172a;">
+        <h2 style="margin:0 0 12px;color:#1e3a8a;">AI Engine Password Reset</h2>
+        <p style="font-size:14px;line-height:1.6;">You requested a password reset for the AI engine lock (Gemini &amp; DeepSeek) in <strong>Multi-Track Analyzer</strong>.</p>
+        <div style="margin:20px 0;padding:16px;background:#0f172a;color:#fbbf24;border-radius:12px;text-align:center;font-size:24px;font-weight:bold;letter-spacing:4px;">${resetCode}</div>
+        <p style="font-size:13px;color:#475569;">This single-use code expires in <strong>15 minutes</strong>. Enter it in the application to set a new password.</p>
+      </div>`;
+
+  if (transportStatus.mode === 'smtp') {
+    const gmailUser = process.env.GMAIL_USER?.trim();
+    const gmailPass = process.env.GMAIL_APP_PASSWORD?.trim();
+    const smtpHost = process.env.SMTP_HOST?.trim() || (gmailUser ? 'smtp.gmail.com' : '');
+    const smtpPort = Number(process.env.SMTP_PORT || 465);
+    const smtpSecure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE.toLowerCase() === 'true' : smtpPort === 465;
+    const smtpUser = process.env.SMTP_USER?.trim() || gmailUser || '';
+    const smtpPass = process.env.SMTP_PASS?.trim() || gmailPass || '';
+    const fromAddr = process.env.SMTP_FROM?.trim() || smtpUser;
+
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"Multi-Track Analyzer" <${fromAddr}>`,
+      to: toEmail,
+      subject,
+      text: textBody,
+      html: htmlBody,
+    });
+    return;
+  }
+
+  // Resend HTTP API mode
+  const resendKey = process.env.RESEND_API_KEY!.trim();
+  const resendFrom = process.env.RESEND_FROM?.trim() || 'Multi-Track Analyzer <onboarding@resend.dev>';
+  const resendRes = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${resendKey}`,
+    },
+    body: JSON.stringify({
+      from: resendFrom,
+      to: [toEmail],
+      subject,
+      text: textBody,
+      html: htmlBody,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!resendRes.ok) {
+    const errText = await resendRes.text().catch(() => '');
+    console.error('Resend API error:', resendRes.status, errText);
+    throw new Error('EMAIL_SEND_FAILED');
+  }
+}
 
 function checkRateLimit(map: Map<string, number[]>, ip: string, windowMs: number, maxRequests: number): boolean {
   const now = Date.now();
@@ -406,15 +560,31 @@ async function callDeepSeekProvider(
 }
 
 async function ensureEnvPasswordInitialized(): Promise<void> {
+  const existing = readLockStore();
+  if (existing) {
+    // Ensure recoveryEmail is persisted in .engine-lock.json
+    try {
+      const raw = JSON.parse(fs.readFileSync(LOCK_FILE_PATH, 'utf8')) as Partial<EngineLockStore>;
+      if (!raw.recoveryEmail || !isValidEmail(raw.recoveryEmail)) {
+        writeLockStore({
+          ...existing,
+          recoveryEmail: DEFAULT_RECOVERY_EMAIL,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    } catch {}
+    return;
+  }
+
   const envPass = process.env.ENGINE_ACCESS_PASSWORD?.trim();
   if (!envPass || envPass.length < 6) return;
-  if (fs.existsSync(LOCK_FILE_PATH)) return;
   const { salt, hash } = await hashPassword(envPass);
   writeLockStore({
     salt,
     hash,
     hmacSecret: crypto.randomBytes(32).toString('hex'),
     tokenVersion: 1,
+    recoveryEmail: DEFAULT_RECOVERY_EMAIL,
     updatedAt: new Date().toISOString(),
   });
 }
@@ -457,11 +627,16 @@ async function startServer() {
   // --- AI ENGINE PASSWORD PROTECTION ROUTES ---
   app.get('/api/engine-auth/status', (req: Request, res: Response) => {
     const store = readLockStore();
+    const delivery = getEmailTransportStatus();
     if (!store) {
       res.json({
         passwordConfigured: false,
         unlocked: false,
         expiresAt: null,
+        recoveryEmail: null,
+        recoveryEmailMasked: maskEmail(DEFAULT_RECOVERY_EMAIL),
+        emailDeliveryConfigured: delivery.configured,
+        emailDeliveryMode: delivery.mode,
       });
       return;
     }
@@ -472,6 +647,10 @@ async function startServer() {
       passwordConfigured: true,
       unlocked: check.valid,
       expiresAt: check.expiresAt,
+      recoveryEmail: check.valid ? store.recoveryEmail : null,
+      recoveryEmailMasked: maskEmail(store.recoveryEmail),
+      emailDeliveryConfigured: delivery.configured,
+      emailDeliveryMode: delivery.mode,
     });
   });
 
@@ -505,22 +684,38 @@ async function startServer() {
         return;
       }
 
+      const rawEmail = typeof body?.recoveryEmail === 'string' ? body.recoveryEmail.trim().toLowerCase() : '';
+      const recoveryEmail = rawEmail ? rawEmail : DEFAULT_RECOVERY_EMAIL;
+      if (!isValidEmail(recoveryEmail)) {
+        res.status(400).json({
+          code: 'INVALID_RECOVERY_EMAIL',
+          error: 'Invalid recovery email address.',
+        });
+        return;
+      }
+
       const { salt, hash } = await hashPassword(password);
       const store: EngineLockStore = {
         salt,
         hash,
         hmacSecret: crypto.randomBytes(32).toString('hex'),
         tokenVersion: 1,
+        recoveryEmail,
         updatedAt: new Date().toISOString(),
       };
       writeLockStore(store);
 
       const { token, expiresAt } = issueEngineToken(store);
+      const delivery = getEmailTransportStatus();
       res.status(201).json({
         passwordConfigured: true,
         unlocked: true,
         token,
         expiresAt,
+        recoveryEmail: store.recoveryEmail,
+        recoveryEmailMasked: maskEmail(store.recoveryEmail),
+        emailDeliveryConfigured: delivery.configured,
+        emailDeliveryMode: delivery.mode,
       });
     } catch (err) {
       console.error('Setup password error:', err);
@@ -571,11 +766,16 @@ async function startServer() {
       }
 
       const { token, expiresAt } = issueEngineToken(store);
+      const delivery = getEmailTransportStatus();
       res.json({
         passwordConfigured: true,
         unlocked: true,
         token,
         expiresAt,
+        recoveryEmail: store.recoveryEmail,
+        recoveryEmailMasked: maskEmail(store.recoveryEmail),
+        emailDeliveryConfigured: delivery.configured,
+        emailDeliveryMode: delivery.mode,
       });
     } catch (err) {
       console.error('Unlock password error:', err);
@@ -641,16 +841,22 @@ async function startServer() {
         hash,
         hmacSecret: store.hmacSecret,
         tokenVersion: store.tokenVersion + 1,
+        recoveryEmail: store.recoveryEmail,
         updatedAt: new Date().toISOString(),
       };
       writeLockStore(updatedStore);
 
       const { token, expiresAt } = issueEngineToken(updatedStore);
+      const delivery = getEmailTransportStatus();
       res.json({
         passwordConfigured: true,
         unlocked: true,
         token,
         expiresAt,
+        recoveryEmail: updatedStore.recoveryEmail,
+        recoveryEmailMasked: maskEmail(updatedStore.recoveryEmail),
+        emailDeliveryConfigured: delivery.configured,
+        emailDeliveryMode: delivery.mode,
       });
     } catch (err) {
       console.error('Change password error:', err);
@@ -661,8 +867,260 @@ async function startServer() {
     }
   });
 
+  app.post('/api/engine-auth/recovery-email', (req: Request, res: Response) => {
+    const store = readLockStore();
+    if (!store) {
+      res.status(404).json({
+        code: 'PASSWORD_NOT_CONFIGURED',
+        error: 'No privacy password has been created yet.',
+      });
+      return;
+    }
+
+    const tokenCheck = verifyEngineToken(req.header('x-engine-token'), store);
+    if (!tokenCheck.valid) {
+      res.status(401).json({
+        code: 'ENGINE_LOCKED',
+        error: 'Unlock the AI engine before modifying the recovery email.',
+      });
+      return;
+    }
+
+    const body = req.body as Record<string, unknown>;
+    const email = typeof body?.recoveryEmail === 'string' ? body.recoveryEmail.trim().toLowerCase() : '';
+    if (!isValidEmail(email)) {
+      res.status(400).json({
+        code: 'INVALID_RECOVERY_EMAIL',
+        error: 'Please provide a valid email address.',
+      });
+      return;
+    }
+
+    const updatedStore: EngineLockStore = {
+      ...store,
+      recoveryEmail: email,
+      updatedAt: new Date().toISOString(),
+    };
+    writeLockStore(updatedStore);
+
+    res.json({
+      recoveryEmail: updatedStore.recoveryEmail,
+      recoveryEmailMasked: maskEmail(updatedStore.recoveryEmail),
+    });
+  });
+
+  app.post('/api/engine-auth/forgot-password', async (req: Request, res: Response) => {
+    const clientIp = req.ip || 'unknown';
+    if (!checkRateLimit(resetRateMap, clientIp, 15 * 60_000, 5)) {
+      res.status(429).json({
+        code: 'RESET_RATE_LIMITED',
+        error: 'Too many reset requests. Please wait 15 minutes.',
+      });
+      return;
+    }
+
+    try {
+      const store = readLockStore();
+      if (!store) {
+        res.status(404).json({
+          code: 'PASSWORD_NOT_CONFIGURED',
+          error: 'No privacy password has been created yet.',
+        });
+        return;
+      }
+
+      const body = req.body as Record<string, unknown>;
+      const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+      const lang: 'fr' | 'en' = body?.lang === 'en' ? 'en' : 'fr';
+
+      if (!isValidEmail(email) || !emailsEqualTimingSafe(email, store.recoveryEmail)) {
+        res.status(400).json({
+          code: 'RECOVERY_EMAIL_MISMATCH',
+          error: 'This email does not match the registered recovery email.',
+        });
+        return;
+      }
+
+      if (!getEmailTransportStatus().configured) {
+        res.status(503).json({
+          code: 'EMAIL_DELIVERY_NOT_CONFIGURED',
+          error: 'Server email delivery is not configured. Add SMTP_HOST, SMTP_USER, SMTP_PASS (or RESEND_API_KEY) in Settings > Secrets.',
+        });
+        return;
+      }
+
+      const resetCode = crypto.randomBytes(4).toString('hex').toUpperCase();
+      const { salt: resetCodeSalt, hash: resetCodeHash } = await hashPassword(resetCode);
+
+      const updatedStore: EngineLockStore = {
+        ...store,
+        resetCodeSalt,
+        resetCodeHash,
+        resetCodeExpiresAt: Date.now() + RESET_CODE_TTL_MS,
+        resetAttempts: 0,
+        updatedAt: new Date().toISOString(),
+      };
+      writeLockStore(updatedStore);
+
+      await sendPasswordResetEmail(store.recoveryEmail, resetCode, lang);
+
+      res.json({
+        sent: true,
+        recoveryEmailMasked: maskEmail(store.recoveryEmail),
+        expiresInMinutes: 15,
+      });
+    } catch (err) {
+      const code = err instanceof Error ? err.message : 'EMAIL_SEND_FAILED';
+      if (code === 'EMAIL_DELIVERY_NOT_CONFIGURED') {
+        res.status(503).json({
+          code,
+          error: 'Server email delivery is not configured. Add SMTP_HOST, SMTP_USER, SMTP_PASS (or RESEND_API_KEY) in Settings > Secrets.',
+        });
+        return;
+      }
+      console.error('Forgot password error:', err);
+      res.status(502).json({
+        code: 'EMAIL_SEND_FAILED',
+        error: 'Failed to send recovery email. Check your SMTP/Resend credentials.',
+      });
+    }
+  });
+
+  app.post('/api/engine-auth/reset-password', async (req: Request, res: Response) => {
+    const clientIp = req.ip || 'unknown';
+    if (!checkRateLimit(authRateMap, clientIp, 15 * 60_000, 10)) {
+      res.status(429).json({
+        code: 'AUTH_RATE_LIMITED',
+        error: 'Too many authentication attempts. Please wait a few minutes.',
+      });
+      return;
+    }
+
+    try {
+      const store = readLockStore();
+      if (!store) {
+        res.status(404).json({
+          code: 'PASSWORD_NOT_CONFIGURED',
+          error: 'No privacy password has been created yet.',
+        });
+        return;
+      }
+
+      const body = req.body as Record<string, unknown>;
+      const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+      const code = typeof body?.code === 'string' ? body.code.trim().toUpperCase() : '';
+      const newPassword = typeof body?.newPassword === 'string' ? body.newPassword : '';
+
+      if (!isValidEmail(email) || !emailsEqualTimingSafe(email, store.recoveryEmail)) {
+        res.status(400).json({
+          code: 'RECOVERY_EMAIL_MISMATCH',
+          error: 'This email does not match the registered recovery email.',
+        });
+        return;
+      }
+
+      if (!store.resetCodeSalt || !store.resetCodeHash || !store.resetCodeExpiresAt) {
+        res.status(400).json({
+          code: 'NO_ACTIVE_RESET_CODE',
+          error: 'No active reset code. Request a new recovery email first.',
+        });
+        return;
+      }
+
+      if (Date.now() > store.resetCodeExpiresAt) {
+        writeLockStore({
+          ...store,
+          resetCodeSalt: undefined,
+          resetCodeHash: undefined,
+          resetCodeExpiresAt: undefined,
+          resetAttempts: undefined,
+          updatedAt: new Date().toISOString(),
+        });
+        res.status(400).json({
+          code: 'RESET_CODE_EXPIRED',
+          error: 'The verification code has expired. Request a new email.',
+        });
+        return;
+      }
+
+      const attempts = store.resetAttempts || 0;
+      if (attempts >= 5) {
+        writeLockStore({
+          ...store,
+          resetCodeSalt: undefined,
+          resetCodeHash: undefined,
+          resetCodeExpiresAt: undefined,
+          resetAttempts: undefined,
+          updatedAt: new Date().toISOString(),
+        });
+        res.status(429).json({
+          code: 'RESET_TOO_MANY_ATTEMPTS',
+          error: 'Too many incorrect codes. Request a new recovery email.',
+        });
+        return;
+      }
+
+      const codeOk = code.length > 0 && (await verifyPassword(code, store.resetCodeSalt, store.resetCodeHash));
+      if (!codeOk) {
+        const nextAttempts = attempts + 1;
+        writeLockStore({
+          ...store,
+          resetCodeSalt: nextAttempts >= 5 ? undefined : store.resetCodeSalt,
+          resetCodeHash: nextAttempts >= 5 ? undefined : store.resetCodeHash,
+          resetCodeExpiresAt: nextAttempts >= 5 ? undefined : store.resetCodeExpiresAt,
+          resetAttempts: nextAttempts >= 5 ? undefined : nextAttempts,
+          updatedAt: new Date().toISOString(),
+        });
+        res.status(401).json({
+          code: 'INVALID_RESET_CODE',
+          error: 'Invalid verification code.',
+        });
+        return;
+      }
+
+      if (newPassword.length < 6 || newPassword.length > 128) {
+        res.status(400).json({
+          code: 'WEAK_PASSWORD',
+          error: 'New password must be between 6 and 128 characters.',
+        });
+        return;
+      }
+
+      const { salt, hash } = await hashPassword(newPassword);
+      const updatedStore: EngineLockStore = {
+        salt,
+        hash,
+        hmacSecret: store.hmacSecret,
+        tokenVersion: store.tokenVersion + 1,
+        recoveryEmail: store.recoveryEmail,
+        updatedAt: new Date().toISOString(),
+      };
+      writeLockStore(updatedStore);
+
+      const { token, expiresAt } = issueEngineToken(updatedStore);
+      const delivery = getEmailTransportStatus();
+      res.json({
+        passwordConfigured: true,
+        unlocked: true,
+        token,
+        expiresAt,
+        recoveryEmail: updatedStore.recoveryEmail,
+        recoveryEmailMasked: maskEmail(updatedStore.recoveryEmail),
+        emailDeliveryConfigured: delivery.configured,
+        emailDeliveryMode: delivery.mode,
+      });
+    } catch (err) {
+      console.error('Reset password error:', err);
+      res.status(500).json({
+        code: 'RESET_FAILED',
+        error: 'Failed to reset password.',
+      });
+    }
+  });
+
   app.post('/api/engine-auth/lock', (req: Request, res: Response) => {
     const store = readLockStore();
+    const delivery = getEmailTransportStatus();
     if (store) {
       const check = verifyEngineToken(req.header('x-engine-token'), store);
       if (check.valid) {
@@ -677,6 +1135,10 @@ async function startServer() {
       passwordConfigured: Boolean(store),
       unlocked: false,
       expiresAt: null,
+      recoveryEmail: null,
+      recoveryEmailMasked: maskEmail(store ? store.recoveryEmail : DEFAULT_RECOVERY_EMAIL),
+      emailDeliveryConfigured: delivery.configured,
+      emailDeliveryMode: delivery.mode,
     });
   });
 

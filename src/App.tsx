@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Music, Share2, Send, Activity, Drum, Cpu, RefreshCw, AlertCircle, FileCode, LayoutDashboard, Copy, Check, Clock, Upload, Plus, Trash2, Mic2, Dices, Mic, Download, Info, Music4, Zap, Waves, Loader2, ShieldCheck, Lock, Unlock, KeyRound, Eye, EyeOff
+  Music, Share2, Send, Activity, Drum, Cpu, RefreshCw, AlertCircle, FileCode, LayoutDashboard, Copy, Check, Clock, Upload, Plus, Trash2, Mic2, Dices, Mic, Download, Info, Music4, Zap, Waves, Loader2, ShieldCheck, Lock, Unlock, KeyRound, Eye, EyeOff, Mail
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -204,6 +204,27 @@ const App = () => {
       modalSelectTitle: "Authentification du Moteur IA",
       modalSelectSubtitle: "Mot de passe requis pour activer :",
       closeModalBtn: "Fermer",
+      recoveryEmailBtn: "E-mail de récupération",
+      recoveryEmailLabel: "E-mail de récupération enregistré",
+      recoveryEmailPlaceholder: "rachid.laieb@gmail.com",
+      saveRecoveryEmailBtn: "Enregistrer l'e-mail",
+      recoveryEmailSavedSuccess: "E-mail de récupération enregistré avec succès !",
+      recoveryEmailInvalidError: "Veuillez saisir une adresse e-mail valide.",
+      emailDeliveryReady: "Envoi d'e-mail serveur actif",
+      emailDeliveryMissing: "Envoi e-mail à configurer dans Settings > Secrets (SMTP_* ou RESEND_API_KEY)",
+      forgotPasswordLink: "Mot de passe oublié ?",
+      forgotPasswordTitle: "Réinitialisation par e-mail",
+      forgotPasswordDesc: "Un code de vérification à usage unique (valable 15 min) sera envoyé à votre adresse e-mail enregistrée :",
+      sendResetCodeBtn: "Envoyer le code par e-mail",
+      resetCodeSentInfo: "Code envoyé à {{email}} ! Vérifiez votre boîte de réception (et spams) puis saisissez le code ci-dessous.",
+      resetCodePlaceholder: "Code reçu par e-mail (ex: A1B2C3D4)",
+      confirmResetBtn: "Définir le nouveau mot de passe",
+      resendCodeBtn: "Renvoyer le code",
+      backToPasswordBtn: "Retour au mot de passe",
+      passwordResetSuccess: "Nouveau mot de passe enregistré et moteur déverrouillé !",
+      errorEmailDeliveryMissing: "L'envoi d'e-mail n'est pas encore configuré sur le serveur. Ajoutez SMTP_HOST, SMTP_USER, SMTP_PASS (ou RESEND_API_KEY) dans Settings > Secrets.",
+      errorRecoveryEmailMismatch: "Cette adresse ne correspond pas à l'e-mail de récupération enregistré.",
+      errorInvalidResetCode: "Code de vérification invalide ou expiré.",
       errorWaitAudio: "Veuillez attendre la fin du traitement audio avant de générer.",
       errorNoRhythm: "Veuillez entrer au moins un motif rythmique pour l'un des instruments.",
       errorGemini: "Désolé, une erreur est survenue lors de la génération IA. Vérifiez votre configuration dans Settings > Secrets ou réessayez.",
@@ -416,6 +437,27 @@ const App = () => {
       modalSelectTitle: "AI Engine Authentication",
       modalSelectSubtitle: "Password required to activate:",
       closeModalBtn: "Close",
+      recoveryEmailBtn: "Recovery Email",
+      recoveryEmailLabel: "Registered Recovery Email",
+      recoveryEmailPlaceholder: "rachid.laieb@gmail.com",
+      saveRecoveryEmailBtn: "Save Email",
+      recoveryEmailSavedSuccess: "Recovery email saved successfully!",
+      recoveryEmailInvalidError: "Please enter a valid email address.",
+      emailDeliveryReady: "Server email delivery active",
+      emailDeliveryMissing: "Configure email delivery in Settings > Secrets (SMTP_* or RESEND_API_KEY)",
+      forgotPasswordLink: "Forgot password?",
+      forgotPasswordTitle: "Email Password Reset",
+      forgotPasswordDesc: "A single-use verification code (valid 15 min) will be sent to your registered recovery address:",
+      sendResetCodeBtn: "Send Verification Email",
+      resetCodeSentInfo: "Code sent to {{email}}! Check your inbox (and spam) then enter the code below.",
+      resetCodePlaceholder: "Email verification code (e.g. A1B2C3D4)",
+      confirmResetBtn: "Set New Password",
+      resendCodeBtn: "Resend code",
+      backToPasswordBtn: "Back to password",
+      passwordResetSuccess: "New password saved and engine unlocked!",
+      errorEmailDeliveryMissing: "Server email delivery is not configured yet. Add SMTP_HOST, SMTP_USER, SMTP_PASS (or RESEND_API_KEY) in Settings > Secrets.",
+      errorRecoveryEmailMismatch: "This email does not match the registered recovery email.",
+      errorInvalidResetCode: "Verification code is invalid or expired.",
       errorWaitAudio: "Please wait for audio processing to finish before generating.",
       errorNoRhythm: "Please enter at least one rhythmic pattern for one of the instruments.",
       errorGemini: "Sorry, an error occurred during AI generation. Check Settings > Secrets or try again.",
@@ -568,15 +610,34 @@ const App = () => {
       return '';
     }
   });
-  const [authStatus, setAuthStatus] = useState<{ passwordConfigured: boolean; unlocked: boolean; loading: boolean }>({
+  const [authStatus, setAuthStatus] = useState<{
+    passwordConfigured: boolean;
+    unlocked: boolean;
+    loading: boolean;
+    recoveryEmail: string;
+    recoveryEmailMasked: string;
+    emailDeliveryConfigured: boolean;
+  }>({
     passwordConfigured: false,
     unlocked: false,
     loading: true,
+    recoveryEmail: '',
+    recoveryEmailMasked: '',
+    emailDeliveryConfigured: false,
   });
   const [setupPassInput, setSetupPassInput] = useState('');
   const [setupPassConfirm, setSetupPassConfirm] = useState('');
+  const [setupRecoveryEmail, setSetupRecoveryEmail] = useState('rachid.laieb@gmail.com');
   const [unlockPassInput, setUnlockPassInput] = useState('');
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showRecoverySettings, setShowRecoverySettings] = useState(false);
+  const [recoveryEmailInput, setRecoveryEmailInput] = useState('rachid.laieb@gmail.com');
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'request' | 'verify'>('request');
+  const [forgotEmailInput, setForgotEmailInput] = useState('rachid.laieb@gmail.com');
+  const [resetCodeInput, setResetCodeInput] = useState('');
+  const [resetNewPassInput, setResetNewPassInput] = useState('');
+  const [resetNewPassConfirm, setResetNewPassConfirm] = useState('');
   const [currentPassInput, setCurrentPassInput] = useState('');
   const [newPassInput, setNewPassInput] = useState('');
   const [newPassConfirm, setNewPassConfirm] = useState('');
@@ -626,10 +687,17 @@ const App = () => {
             try { sessionStorage.removeItem('suno_engine_token'); } catch {}
             setEngineToken('');
           }
+          if (typeof data.recoveryEmail === 'string' && data.recoveryEmail) {
+            setRecoveryEmailInput(data.recoveryEmail);
+            setForgotEmailInput(data.recoveryEmail);
+          }
           setAuthStatus({
             passwordConfigured: Boolean(data.passwordConfigured),
             unlocked: Boolean(data.unlocked),
             loading: false,
+            recoveryEmail: typeof data.recoveryEmail === 'string' ? data.recoveryEmail : '',
+            recoveryEmailMasked: typeof data.recoveryEmailMasked === 'string' ? data.recoveryEmailMasked : '',
+            emailDeliveryConfigured: Boolean(data.emailDeliveryConfigured),
           });
         } else {
           setAuthStatus((prev) => ({ ...prev, loading: false }));
@@ -665,7 +733,10 @@ const App = () => {
       const res = await fetch('/api/engine-auth/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: setupPassInput }),
+        body: JSON.stringify({
+          password: setupPassInput,
+          recoveryEmail: setupRecoveryEmail.trim() || 'rachid.laieb@gmail.com',
+        }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -673,7 +744,18 @@ const App = () => {
         return;
       }
       if (data?.token) persistEngineToken(data.token);
-      setAuthStatus({ passwordConfigured: true, unlocked: true, loading: false });
+      setAuthStatus({
+        passwordConfigured: true,
+        unlocked: true,
+        loading: false,
+        recoveryEmail: typeof data?.recoveryEmail === 'string' ? data.recoveryEmail : (setupRecoveryEmail.trim() || 'rachid.laieb@gmail.com'),
+        recoveryEmailMasked: typeof data?.recoveryEmailMasked === 'string' ? data.recoveryEmailMasked : '',
+        emailDeliveryConfigured: Boolean(data?.emailDeliveryConfigured),
+      });
+      if (data?.recoveryEmail) {
+        setRecoveryEmailInput(data.recoveryEmail);
+        setForgotEmailInput(data.recoveryEmail);
+      }
       if (pendingProvider) {
         setAiProvider(pendingProvider);
         setPendingProvider(null);
@@ -692,6 +774,8 @@ const App = () => {
 
   const handleSelectProviderClick = (targetProvider: 'gemini' | 'deepseek') => {
     setAuthFeedback(null);
+    setForgotMode(false);
+    setForgotStep('request');
     if (!authStatus.unlocked || targetProvider !== aiProvider) {
       setPendingProvider(targetProvider);
       setUnlockPassInput('');
@@ -725,11 +809,23 @@ const App = () => {
         return;
       }
       if (data?.token) persistEngineToken(data.token);
-      setAuthStatus({ passwordConfigured: true, unlocked: true, loading: false });
+      setAuthStatus({
+        passwordConfigured: true,
+        unlocked: true,
+        loading: false,
+        recoveryEmail: typeof data?.recoveryEmail === 'string' ? data.recoveryEmail : authStatus.recoveryEmail,
+        recoveryEmailMasked: typeof data?.recoveryEmailMasked === 'string' ? data.recoveryEmailMasked : authStatus.recoveryEmailMasked,
+        emailDeliveryConfigured: Boolean(data?.emailDeliveryConfigured),
+      });
+      if (data?.recoveryEmail) {
+        setRecoveryEmailInput(data.recoveryEmail);
+        setForgotEmailInput(data.recoveryEmail);
+      }
       if (pendingProvider) {
         setAiProvider(pendingProvider);
         setPendingProvider(null);
       }
+      setForgotMode(false);
       setPasswordModalOpen(false);
       setUnlockPassInput('');
       setError(null);
@@ -743,6 +839,7 @@ const App = () => {
   const handleLockEngine = async () => {
     setAuthFeedback(null);
     setShowChangePassword(false);
+    setShowRecoverySettings(false);
     try {
       await fetch('/api/engine-auth/lock', {
         method: 'POST',
@@ -750,7 +847,157 @@ const App = () => {
       });
     } catch {}
     persistEngineToken('');
-    setAuthStatus((prev) => ({ ...prev, unlocked: false }));
+    setAuthStatus((prev) => ({ ...prev, unlocked: false, recoveryEmail: '' }));
+  };
+
+  const handleSaveRecoveryEmail = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setAuthFeedback(null);
+    const trimmed = recoveryEmailInput.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(trimmed)) {
+      setAuthFeedback({ type: 'error', text: cur.recoveryEmailInvalidError });
+      return;
+    }
+
+    setAuthSubmitting(true);
+    try {
+      const res = await fetch('/api/engine-auth/recovery-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(engineToken ? { 'x-engine-token': engineToken } : {}),
+        },
+        body: JSON.stringify({ recoveryEmail: trimmed }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setAuthFeedback({ type: 'error', text: data?.error || cur.recoveryEmailInvalidError });
+        return;
+      }
+      setAuthStatus((prev) => ({
+        ...prev,
+        recoveryEmail: data?.recoveryEmail || trimmed,
+        recoveryEmailMasked: data?.recoveryEmailMasked || prev.recoveryEmailMasked,
+      }));
+      setForgotEmailInput(data?.recoveryEmail || trimmed);
+      setShowRecoverySettings(false);
+      setAuthFeedback({ type: 'success', text: cur.recoveryEmailSavedSuccess });
+      setTimeout(() => setAuthFeedback(null), 4000);
+    } catch {
+      setAuthFeedback({ type: 'error', text: cur.errorGemini });
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const handleRequestResetCode = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setAuthFeedback(null);
+    const email = forgotEmailInput.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      setAuthFeedback({ type: 'error', text: cur.recoveryEmailInvalidError });
+      return;
+    }
+
+    setAuthSubmitting(true);
+    try {
+      const res = await fetch('/api/engine-auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, lang: currentLang }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const code = data?.code;
+        if (code === 'EMAIL_DELIVERY_NOT_CONFIGURED') {
+          setAuthFeedback({ type: 'error', text: cur.errorEmailDeliveryMissing });
+        } else if (code === 'RECOVERY_EMAIL_MISMATCH') {
+          setAuthFeedback({ type: 'error', text: cur.errorRecoveryEmailMismatch });
+        } else {
+          setAuthFeedback({ type: 'error', text: data?.error || cur.errorGemini });
+        }
+        return;
+      }
+      setForgotStep('verify');
+      setResetCodeInput('');
+      setAuthFeedback({
+        type: 'success',
+        text: cur.resetCodeSentInfo.replace('{{email}}', data?.recoveryEmailMasked || email),
+      });
+    } catch {
+      setAuthFeedback({ type: 'error', text: cur.errorGemini });
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const handleResetPassword = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setAuthFeedback(null);
+    if (!resetCodeInput.trim()) {
+      setAuthFeedback({ type: 'error', text: cur.errorInvalidResetCode });
+      return;
+    }
+    if (resetNewPassInput.length < 6) {
+      setAuthFeedback({ type: 'error', text: cur.passwordTooShortError });
+      return;
+    }
+    if (resetNewPassInput !== resetNewPassConfirm) {
+      setAuthFeedback({ type: 'error', text: cur.passwordMismatchError });
+      return;
+    }
+
+    setAuthSubmitting(true);
+    try {
+      const res = await fetch('/api/engine-auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: forgotEmailInput.trim().toLowerCase(),
+          code: resetCodeInput.trim().toUpperCase(),
+          newPassword: resetNewPassInput,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const code = data?.code;
+        if (code === 'INVALID_RESET_CODE' || code === 'RESET_CODE_EXPIRED' || code === 'NO_ACTIVE_RESET_CODE') {
+          setAuthFeedback({ type: 'error', text: cur.errorInvalidResetCode });
+        } else if (code === 'RECOVERY_EMAIL_MISMATCH') {
+          setAuthFeedback({ type: 'error', text: cur.errorRecoveryEmailMismatch });
+        } else {
+          setAuthFeedback({ type: 'error', text: data?.error || cur.errorInvalidResetCode });
+        }
+        return;
+      }
+
+      if (data?.token) persistEngineToken(data.token);
+      setAuthStatus({
+        passwordConfigured: true,
+        unlocked: true,
+        loading: false,
+        recoveryEmail: typeof data?.recoveryEmail === 'string' ? data.recoveryEmail : forgotEmailInput.trim().toLowerCase(),
+        recoveryEmailMasked: typeof data?.recoveryEmailMasked === 'string' ? data.recoveryEmailMasked : '',
+        emailDeliveryConfigured: Boolean(data?.emailDeliveryConfigured),
+      });
+      if (pendingProvider) {
+        setAiProvider(pendingProvider);
+        setPendingProvider(null);
+      }
+      setForgotMode(false);
+      setForgotStep('request');
+      setResetCodeInput('');
+      setResetNewPassInput('');
+      setResetNewPassConfirm('');
+      setPasswordModalOpen(false);
+      setError(null);
+      setAuthFeedback({ type: 'success', text: cur.passwordResetSuccess });
+      setTimeout(() => setAuthFeedback(null), 5000);
+    } catch {
+      setAuthFeedback({ type: 'error', text: cur.errorGemini });
+    } finally {
+      setAuthSubmitting(false);
+    }
   };
 
   const handleChangePassword = async (e?: React.FormEvent) => {
@@ -1875,7 +2122,23 @@ const App = () => {
                         <>
                           <button
                             type="button"
-                            onClick={() => setShowChangePassword(prev => !prev)}
+                            onClick={() => {
+                              setShowRecoverySettings(prev => !prev);
+                              setShowChangePassword(false);
+                              setAuthFeedback(null);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 hover:bg-white text-blue-950 rounded-xl text-xs font-black border border-black/10 shadow-sm transition-all cursor-pointer"
+                          >
+                            <Mail className="w-3.5 h-3.5" />
+                            {cur.recoveryEmailBtn}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowChangePassword(prev => !prev);
+                              setShowRecoverySettings(false);
+                              setAuthFeedback(null);
+                            }}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 hover:bg-white text-blue-950 rounded-xl text-xs font-black border border-black/10 shadow-sm transition-all cursor-pointer"
                           >
                             <KeyRound className="w-3.5 h-3.5" />
@@ -2070,7 +2333,7 @@ const App = () => {
                           <p className="text-[11px] font-semibold text-neutral-600 mt-0.5">{cur.setupPasswordDesc}</p>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-center">
                         <div className="relative">
                           <input
                             type={showPasswordChars ? 'text' : 'password'}
@@ -2097,6 +2360,14 @@ const App = () => {
                           className="w-full bg-white text-neutral-900 rounded-xl px-3.5 py-2.5 border border-black/10 text-xs font-bold focus:outline-none focus:border-blue-500"
                           autoComplete="new-password"
                         />
+                        <input
+                          type="email"
+                          placeholder={cur.recoveryEmailPlaceholder}
+                          value={setupRecoveryEmail}
+                          onChange={(e) => setSetupRecoveryEmail(e.target.value)}
+                          className="w-full bg-white text-neutral-900 rounded-xl px-3.5 py-2.5 border border-black/10 text-xs font-bold focus:outline-none focus:border-blue-500"
+                          autoComplete="email"
+                        />
                         <button
                           type="submit"
                           disabled={authSubmitting}
@@ -2109,52 +2380,179 @@ const App = () => {
                     </form>
                   )}
 
-                  {/* Case 2: Unlock Engine (when password is configured and locked) */}
+                  {/* Case 2: Unlock Engine or Forgot Password (when password is configured and locked) */}
                   {!authStatus.loading && authStatus.passwordConfigured && !authStatus.unlocked && (
-                    <form
-                      onSubmit={handleUnlockEngine}
-                      className="bg-neutral-900/95 text-white rounded-2xl p-4 border border-white/10 shadow-lg space-y-3"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-2.5">
-                          <Lock className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-xs font-black uppercase tracking-wider text-amber-300">{cur.unlockTitle}</p>
-                            <p className="text-[11px] font-medium text-neutral-300 mt-0.5">
-                              {cur.unlockDesc} ({cur.selectedEngineSummary}: {aiProvider === 'deepseek' ? `DeepSeek / ${deepseekModel}` : 'Gemini 4 Hydrogen'})
-                            </p>
+                    <div className="bg-neutral-900/95 text-white rounded-2xl p-4 border border-white/10 shadow-lg space-y-3">
+                      {!forgotMode ? (
+                        <form onSubmit={handleUnlockEngine} className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2.5">
+                              <Lock className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-wider text-amber-300">{cur.unlockTitle}</p>
+                                <p className="text-[11px] font-medium text-neutral-300 mt-0.5">
+                                  {cur.unlockDesc} ({cur.selectedEngineSummary}: {aiProvider === 'deepseek' ? `DeepSeek / ${deepseekModel}` : 'Gemini 4 Hydrogen'})
+                                </p>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <div className="relative flex-1">
-                          <input
-                            type={showPasswordChars ? 'text' : 'password'}
-                            placeholder={cur.enterPasswordPlaceholder}
-                            value={unlockPassInput}
-                            onChange={(e) => setUnlockPassInput(e.target.value)}
-                            className="w-full bg-black/50 text-white rounded-xl px-3.5 py-2.5 pr-9 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400 placeholder-neutral-500"
-                            autoComplete="current-password"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPasswordChars(v => !v)}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
-                            tabIndex={-1}
-                          >
-                            {showPasswordChars ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                        <button
-                          type="submit"
-                          disabled={authSubmitting}
-                          className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
-                        >
-                          <Unlock className="w-3.5 h-3.5" />
-                          {cur.unlockBtn}
-                        </button>
-                      </div>
-                    </form>
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="relative flex-1">
+                              <input
+                                type={showPasswordChars ? 'text' : 'password'}
+                                placeholder={cur.enterPasswordPlaceholder}
+                                value={unlockPassInput}
+                                onChange={(e) => setUnlockPassInput(e.target.value)}
+                                className="w-full bg-black/50 text-white rounded-xl px-3.5 py-2.5 pr-9 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400 placeholder-neutral-500"
+                                autoComplete="current-password"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowPasswordChars(v => !v)}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
+                                tabIndex={-1}
+                              >
+                                {showPasswordChars ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            </div>
+                            <button
+                              type="submit"
+                              disabled={authSubmitting}
+                              className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                            >
+                              <Unlock className="w-3.5 h-3.5" />
+                              {cur.unlockBtn}
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-[11px] text-neutral-400 font-medium">
+                              {cur.recoveryEmailLabel}: <span className="text-neutral-200 font-bold">{authStatus.recoveryEmailMasked || 'ra***@gmail.com'}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAuthFeedback(null);
+                                setForgotMode(true);
+                                setForgotStep('request');
+                              }}
+                              className="text-xs font-bold text-amber-300 hover:text-amber-200 underline underline-offset-2 cursor-pointer flex items-center gap-1"
+                            >
+                              <Mail className="w-3.5 h-3.5" />
+                              {cur.forgotPasswordLink}
+                            </button>
+                          </div>
+                        </form>
+                      ) : forgotStep === 'request' ? (
+                        <form onSubmit={handleRequestResetCode} className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2.5">
+                              <Mail className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-wider text-amber-300">{cur.forgotPasswordTitle}</p>
+                                <p className="text-[11px] font-medium text-neutral-300 mt-0.5">
+                                  {cur.forgotPasswordDesc} <span className="text-white font-bold">{authStatus.recoveryEmailMasked || 'ra***@gmail.com'}</span>
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setForgotMode(false);
+                                setAuthFeedback(null);
+                              }}
+                              className="text-[11px] font-bold text-neutral-300 hover:text-white underline cursor-pointer whitespace-nowrap"
+                            >
+                              {cur.backToPasswordBtn}
+                            </button>
+                          </div>
+                          {!authStatus.emailDeliveryConfigured && (
+                            <div className="px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-400/30 text-[11px] text-amber-200 font-semibold">
+                              {cur.emailDeliveryMissing}
+                            </div>
+                          )}
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <input
+                              type="email"
+                              placeholder={cur.recoveryEmailPlaceholder}
+                              value={forgotEmailInput}
+                              onChange={(e) => setForgotEmailInput(e.target.value)}
+                              className="flex-1 bg-black/50 text-white rounded-xl px-3.5 py-2.5 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400 placeholder-neutral-500"
+                              autoComplete="email"
+                            />
+                            <button
+                              type="submit"
+                              disabled={authSubmitting}
+                              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                            >
+                              <Mail className="w-3.5 h-3.5" />
+                              {cur.sendResetCodeBtn}
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <form onSubmit={handleResetPassword} className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2.5">
+                              <KeyRound className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                              <p className="text-xs font-black uppercase tracking-wider text-amber-300">{cur.forgotPasswordTitle}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setForgotStep('request')}
+                                className="text-[11px] font-bold text-amber-300 hover:text-amber-200 underline cursor-pointer"
+                              >
+                                {cur.resendCodeBtn}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setForgotMode(false);
+                                  setForgotStep('request');
+                                  setAuthFeedback(null);
+                                }}
+                                className="text-[11px] font-bold text-neutral-300 hover:text-white underline cursor-pointer"
+                              >
+                                {cur.backToPasswordBtn}
+                              </button>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                            <input
+                              type="text"
+                              placeholder={cur.resetCodePlaceholder}
+                              value={resetCodeInput}
+                              onChange={(e) => setResetCodeInput(e.target.value.toUpperCase())}
+                              className="w-full bg-black/50 text-white rounded-xl px-3.5 py-2.5 border border-white/15 text-xs font-bold tracking-widest uppercase focus:outline-none focus:border-amber-400 placeholder-neutral-500"
+                            />
+                            <input
+                              type={showPasswordChars ? 'text' : 'password'}
+                              placeholder={cur.newPasswordPlaceholder}
+                              value={resetNewPassInput}
+                              onChange={(e) => setResetNewPassInput(e.target.value)}
+                              className="w-full bg-black/50 text-white rounded-xl px-3.5 py-2.5 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400 placeholder-neutral-500"
+                              autoComplete="new-password"
+                            />
+                            <input
+                              type={showPasswordChars ? 'text' : 'password'}
+                              placeholder={cur.confirmPasswordPlaceholder}
+                              value={resetNewPassConfirm}
+                              onChange={(e) => setResetNewPassConfirm(e.target.value)}
+                              className="w-full bg-black/50 text-white rounded-xl px-3.5 py-2.5 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400 placeholder-neutral-500"
+                              autoComplete="new-password"
+                            />
+                            <button
+                              type="submit"
+                              disabled={authSubmitting}
+                              className="w-full px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                            >
+                              <Unlock className="w-3.5 h-3.5" />
+                              {cur.confirmResetBtn}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
                   )}
 
                   {/* Case 3: Change Password Drawer (when unlocked) */}
@@ -2204,6 +2602,54 @@ const App = () => {
                               setNewPassInput('');
                               setNewPassConfirm('');
                             }}
+                            className="px-3 py-2 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                          >
+                            {cur.cancelBtn}
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Case 4: Recovery Email Registration & Delivery Status Drawer (when unlocked) */}
+                  {authStatus.passwordConfigured && authStatus.unlocked && showRecoverySettings && (
+                    <form
+                      onSubmit={handleSaveRecoveryEmail}
+                      className="bg-[#f0f2f8] rounded-2xl p-4 border border-black/10 shadow-inner space-y-3"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-4 h-4 text-blue-900" />
+                          <span className="text-xs font-black text-blue-950 uppercase tracking-wide">{cur.recoveryEmailLabel}</span>
+                        </div>
+                        <span className={`text-[10px] font-black px-2.5 py-1 rounded-lg border ${
+                          authStatus.emailDeliveryConfigured
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            : 'bg-amber-100 text-amber-800 border-amber-200'
+                        }`}>
+                          {authStatus.emailDeliveryConfigured ? cur.emailDeliveryReady : cur.emailDeliveryMissing}
+                        </span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2.5 items-center">
+                        <input
+                          type="email"
+                          placeholder={cur.recoveryEmailPlaceholder}
+                          value={recoveryEmailInput}
+                          onChange={(e) => setRecoveryEmailInput(e.target.value)}
+                          className="flex-1 w-full bg-white text-neutral-900 rounded-xl px-3.5 py-2 border border-black/10 text-xs font-bold focus:outline-none focus:border-blue-500"
+                          autoComplete="email"
+                        />
+                        <div className="flex gap-2 w-full sm:w-auto">
+                          <button
+                            type="submit"
+                            disabled={authSubmitting}
+                            className="flex-1 sm:flex-initial px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-black transition-all disabled:opacity-50 cursor-pointer"
+                          >
+                            {cur.saveRecoveryEmailBtn}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowRecoverySettings(false)}
                             className="px-3 py-2 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 rounded-xl text-xs font-bold transition-all cursor-pointer"
                           >
                             {cur.cancelBtn}
@@ -2439,8 +2885,16 @@ const App = () => {
                     className="w-full bg-black/50 text-white rounded-xl px-4 py-3 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400"
                     autoComplete="new-password"
                   />
+                  <input
+                    type="email"
+                    placeholder={cur.recoveryEmailPlaceholder}
+                    value={setupRecoveryEmail}
+                    onChange={(e) => setSetupRecoveryEmail(e.target.value)}
+                    className="w-full bg-black/50 text-white rounded-xl px-4 py-3 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400"
+                    autoComplete="email"
+                  />
                   {authFeedback && (
-                    <p className="text-xs font-bold text-red-400 flex items-center gap-1.5">
+                    <p className={`text-xs font-bold flex items-center gap-1.5 ${authFeedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
                       <AlertCircle className="w-4 h-4 flex-shrink-0" />
                       {authFeedback.text}
                     </p>
@@ -2454,7 +2908,7 @@ const App = () => {
                     {cur.createPasswordBtn}
                   </button>
                 </form>
-              ) : (
+              ) : !forgotMode ? (
                 <form onSubmit={handleUnlockEngine} className="space-y-3">
                   <div className="relative">
                     <input
@@ -2476,7 +2930,7 @@ const App = () => {
                     </button>
                   </div>
                   {authFeedback && (
-                    <p className="text-xs font-bold text-red-400 flex items-center gap-1.5">
+                    <p className={`text-xs font-bold flex items-center gap-1.5 ${authFeedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
                       <AlertCircle className="w-4 h-4 flex-shrink-0" />
                       {authFeedback.text}
                     </p>
@@ -2489,6 +2943,128 @@ const App = () => {
                     <Unlock className="w-4 h-4" />
                     {cur.unlockBtn}
                   </button>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-[11px] text-neutral-400">
+                      {authStatus.recoveryEmailMasked || 'ra***@gmail.com'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthFeedback(null);
+                        setForgotMode(true);
+                        setForgotStep('request');
+                      }}
+                      className="text-xs font-bold text-amber-300 hover:text-amber-200 underline underline-offset-2 cursor-pointer flex items-center gap-1"
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      {cur.forgotPasswordLink}
+                    </button>
+                  </div>
+                </form>
+              ) : forgotStep === 'request' ? (
+                <form onSubmit={handleRequestResetCode} className="space-y-3">
+                  <p className="text-xs text-neutral-300 leading-relaxed">
+                    {cur.forgotPasswordDesc} <span className="text-amber-300 font-bold">{authStatus.recoveryEmailMasked || 'ra***@gmail.com'}</span>
+                  </p>
+                  {!authStatus.emailDeliveryConfigured && (
+                    <div className="px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-400/30 text-[11px] text-amber-200 font-semibold">
+                      {cur.emailDeliveryMissing}
+                    </div>
+                  )}
+                  <input
+                    type="email"
+                    autoFocus
+                    placeholder={cur.recoveryEmailPlaceholder}
+                    value={forgotEmailInput}
+                    onChange={(e) => setForgotEmailInput(e.target.value)}
+                    className="w-full bg-black/50 text-white rounded-xl px-4 py-3 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400"
+                    autoComplete="email"
+                  />
+                  {authFeedback && (
+                    <p className={`text-xs font-bold flex items-center gap-1.5 ${authFeedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      {authFeedback.text}
+                    </p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={authSubmitting}
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Mail className="w-4 h-4" />
+                    {cur.sendResetCodeBtn}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotMode(false);
+                      setAuthFeedback(null);
+                    }}
+                    className="w-full py-2 text-xs font-bold text-neutral-300 hover:text-white cursor-pointer"
+                  >
+                    {cur.backToPasswordBtn}
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleResetPassword} className="space-y-3">
+                  <input
+                    type="text"
+                    autoFocus
+                    placeholder={cur.resetCodePlaceholder}
+                    value={resetCodeInput}
+                    onChange={(e) => setResetCodeInput(e.target.value.toUpperCase())}
+                    className="w-full bg-black/50 text-white rounded-xl px-4 py-3 border border-white/15 text-xs font-bold tracking-widest uppercase focus:outline-none focus:border-amber-400"
+                  />
+                  <input
+                    type={showPasswordChars ? 'text' : 'password'}
+                    placeholder={cur.newPasswordPlaceholder}
+                    value={resetNewPassInput}
+                    onChange={(e) => setResetNewPassInput(e.target.value)}
+                    className="w-full bg-black/50 text-white rounded-xl px-4 py-3 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400"
+                    autoComplete="new-password"
+                  />
+                  <input
+                    type={showPasswordChars ? 'text' : 'password'}
+                    placeholder={cur.confirmPasswordPlaceholder}
+                    value={resetNewPassConfirm}
+                    onChange={(e) => setResetNewPassConfirm(e.target.value)}
+                    className="w-full bg-black/50 text-white rounded-xl px-4 py-3 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400"
+                    autoComplete="new-password"
+                  />
+                  {authFeedback && (
+                    <p className={`text-xs font-bold flex items-center gap-1.5 ${authFeedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      {authFeedback.text}
+                    </p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={authSubmitting}
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Unlock className="w-4 h-4" />
+                    {cur.confirmResetBtn}
+                  </button>
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setForgotStep('request')}
+                      className="text-xs font-bold text-amber-300 hover:text-amber-200 underline cursor-pointer"
+                    >
+                      {cur.resendCodeBtn}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotMode(false);
+                        setForgotStep('request');
+                        setAuthFeedback(null);
+                      }}
+                      className="text-xs font-bold text-neutral-300 hover:text-white cursor-pointer"
+                    >
+                      {cur.backToPasswordBtn}
+                    </button>
+                  </div>
                 </form>
               )}
             </motion.div>
