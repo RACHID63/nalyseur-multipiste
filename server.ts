@@ -2,17 +2,22 @@ import 'dotenv/config';
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
+const LOCK_FILE_PATH = path.join(__dirname, '.engine-lock.json');
+const TOKEN_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 type AiProvider = 'gemini' | 'deepseek';
 type DeepSeekModel = 'deepseek-chat' | 'deepseek-reasoner';
+type GeminiThinkingLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
 interface TrackInput {
   name: string;
@@ -22,6 +27,7 @@ interface TrackInput {
 
 interface GenerateRequestBody {
   provider: AiProvider;
+  geminiThinkingLevel?: GeminiThinkingLevel;
   deepseekModel?: DeepSeekModel;
   deepseekTemperature?: number;
   lang: 'fr' | 'en';
@@ -42,24 +48,136 @@ interface SunoResult {
   lyrics: string;
 }
 
+interface EngineLockStore {
+  salt: string;
+  hash: string;
+  hmacSecret: string;
+  tokenVersion: number;
+  updatedAt: string;
+}
+
 const DEFAULT_ANTI_PROMPT =
   "Sibilance, breathy vocals, whispering, airy voice, hissing, background noise, low-fidelity, muffled, harsh treble, whistling 's'";
 
-// Simple sliding-window rate limiter per IP for /api/generate
-const rateLimitMap = new Map<string, number[]>();
-const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX_REQUESTS = 30;
+// --- PASSWORD VAULT & TOKEN HELPERS ---
+let runtimeFallbackHmacSecret = crypto.randomBytes(32).toString('hex');
 
-function checkRateLimit(ip: string): boolean {
+function readLockStore(): EngineLockStore | null {
+  try {
+    if (!fs.existsSync(LOCK_FILE_PATH)) return null;
+    const raw = fs.readFileSync(LOCK_FILE_PATH, 'utf8');
+    const parsed = JSON.parse(raw) as Partial<EngineLockStore>;
+    if (
+      typeof parsed.salt === 'string' &&
+      typeof parsed.hash === 'string' &&
+      typeof parsed.hmacSecret === 'string' &&
+      typeof parsed.tokenVersion === 'number'
+    ) {
+      return {
+        salt: parsed.salt,
+        hash: parsed.hash,
+        hmacSecret: parsed.hmacSecret,
+        tokenVersion: parsed.tokenVersion,
+        updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLockStore(store: EngineLockStore): void {
+  fs.writeFileSync(LOCK_FILE_PATH, JSON.stringify(store, null, 2), {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
+}
+
+function hashPassword(password: string, saltHex?: string): Promise<{ salt: string; hash: string }> {
+  const salt = saltHex || crypto.randomBytes(16).toString('hex');
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve({ salt, hash: derivedKey.toString('hex') });
+    });
+  });
+}
+
+async function verifyPassword(password: string, salt: string, expectedHashHex: string): Promise<boolean> {
+  const { hash } = await hashPassword(password, salt);
+  const actualBuf = Buffer.from(hash, 'hex');
+  const expectedBuf = Buffer.from(expectedHashHex, 'hex');
+  if (actualBuf.length !== expectedBuf.length) return false;
+  return crypto.timingSafeEqual(actualBuf, expectedBuf);
+}
+
+function issueEngineToken(store: EngineLockStore): { token: string; expiresAt: number } {
+  const expiresAt = Date.now() + TOKEN_TTL_MS;
+  const payloadObj = {
+    v: store.tokenVersion,
+    exp: expiresAt,
+    nonce: crypto.randomBytes(8).toString('hex'),
+  };
+  const payloadB64 = Buffer.from(JSON.stringify(payloadObj), 'utf8').toString('base64url');
+  const secret = store.hmacSecret || runtimeFallbackHmacSecret;
+  const signature = crypto.createHmac('sha256', secret).update(payloadB64).digest('base64url');
+  return {
+    token: `${payloadB64}.${signature}`,
+    expiresAt,
+  };
+}
+
+function verifyEngineToken(token: string | undefined, store: EngineLockStore | null): { valid: boolean; expiresAt: number | null } {
+  if (!token || !store) return { valid: false, expiresAt: null };
+  const parts = token.split('.');
+  if (parts.length !== 2) return { valid: false, expiresAt: null };
+  const [payloadB64, providedSig] = parts;
+  if (!payloadB64 || !providedSig) return { valid: false, expiresAt: null };
+
+  const secret = store.hmacSecret || runtimeFallbackHmacSecret;
+  const expectedSig = crypto.createHmac('sha256', secret).update(payloadB64).digest('base64url');
+
+  const providedBuf = Buffer.from(providedSig, 'utf8');
+  const expectedBuf = Buffer.from(expectedSig, 'utf8');
+  if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
+    return { valid: false, expiresAt: null };
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as {
+      v?: number;
+      exp?: number;
+    };
+    if (payload.v !== store.tokenVersion) {
+      return { valid: false, expiresAt: null };
+    }
+    if (typeof payload.exp !== 'number' || Date.now() > payload.exp) {
+      return { valid: false, expiresAt: null };
+    }
+    return { valid: true, expiresAt: payload.exp };
+  } catch {
+    return { valid: false, expiresAt: null };
+  }
+}
+
+// --- RATE LIMITERS ---
+const generateRateMap = new Map<string, number[]>();
+const authRateMap = new Map<string, number[]>();
+
+function checkRateLimit(map: Map<string, number[]>, ip: string, windowMs: number, maxRequests: number): boolean {
   const now = Date.now();
-  const timestamps = rateLimitMap.get(ip) || [];
-  const recent = timestamps.filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
-    rateLimitMap.set(ip, recent);
+  const timestamps = map.get(ip) || [];
+  const recent = timestamps.filter((ts) => now - ts < windowMs);
+  if (recent.length >= maxRequests) {
+    map.set(ip, recent);
     return false;
   }
   recent.push(now);
-  rateLimitMap.set(ip, recent);
+  map.set(ip, recent);
   return true;
 }
 
@@ -81,7 +199,6 @@ function cleanAndParseJson(raw: string): SunoResult {
     clean = clean.replace(/```$/, '').trim();
   }
 
-  // Extract outermost JSON object if wrapped in commentary
   const firstBrace = clean.indexOf('{');
   const lastBrace = clean.lastIndexOf('}');
   if (firstBrace !== -1 && lastBrace > firstBrace) {
@@ -172,11 +289,14 @@ ${isFr ? 'Réponds uniquement au format JSON suivant' : 'Respond only in the fol
   return { systemInstruction, userPrompt };
 }
 
-async function callGeminiProvider(systemInstruction: string, userPrompt: string): Promise<SunoResult> {
+async function callGeminiProvider(
+  systemInstruction: string,
+  userPrompt: string,
+  thinkingLevelChoice: GeminiThinkingLevel
+): Promise<SunoResult> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
-    const err = new Error('MISSING_GEMINI_KEY');
-    throw err;
+    throw new Error('MISSING_GEMINI_KEY');
   }
 
   const ai = new GoogleGenAI({
@@ -188,11 +308,21 @@ async function callGeminiProvider(systemInstruction: string, userPrompt: string)
     },
   });
 
+  const thinkingLevel =
+    thinkingLevelChoice === 'LOW'
+      ? ThinkingLevel.LOW
+      : thinkingLevelChoice === 'MEDIUM'
+        ? ThinkingLevel.MEDIUM
+        : ThinkingLevel.HIGH;
+
   const response = await ai.models.generateContent({
     model: 'gemini-4-hydrogen',
     contents: userPrompt,
     config: {
       systemInstruction,
+      thinkingConfig: {
+        thinkingLevel,
+      },
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,
@@ -222,8 +352,7 @@ async function callDeepSeekProvider(
 ): Promise<SunoResult> {
   const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
   if (!apiKey) {
-    const err = new Error('MISSING_DEEPSEEK_KEY');
-    throw err;
+    throw new Error('MISSING_DEEPSEEK_KEY');
   }
 
   const payload: Record<string, unknown> = {
@@ -276,7 +405,22 @@ async function callDeepSeekProvider(
   return cleanAndParseJson(rawText);
 }
 
+async function ensureEnvPasswordInitialized(): Promise<void> {
+  const envPass = process.env.ENGINE_ACCESS_PASSWORD?.trim();
+  if (!envPass || envPass.length < 6) return;
+  if (fs.existsSync(LOCK_FILE_PATH)) return;
+  const { salt, hash } = await hashPassword(envPass);
+  writeLockStore({
+    salt,
+    hash,
+    hmacSecret: crypto.randomBytes(32).toString('hex'),
+    tokenVersion: 1,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 async function startServer() {
+  await ensureEnvPasswordInitialized();
   const app = express();
   app.set('trust proxy', 1);
 
@@ -296,7 +440,7 @@ async function startServer() {
 
   app.use(express.json({ limit: '1mb' }));
 
-  // Safely expose availability flags only — never keys or prefixes
+  // Safely expose availability flags only — never keys or hashes
   app.get('/api/providers', (_req: Request, res: Response) => {
     res.json({
       gemini: {
@@ -310,9 +454,235 @@ async function startServer() {
     });
   });
 
+  // --- AI ENGINE PASSWORD PROTECTION ROUTES ---
+  app.get('/api/engine-auth/status', (req: Request, res: Response) => {
+    const store = readLockStore();
+    if (!store) {
+      res.json({
+        passwordConfigured: false,
+        unlocked: false,
+        expiresAt: null,
+      });
+      return;
+    }
+
+    const token = req.header('x-engine-token');
+    const check = verifyEngineToken(token, store);
+    res.json({
+      passwordConfigured: true,
+      unlocked: check.valid,
+      expiresAt: check.expiresAt,
+    });
+  });
+
+  app.post('/api/engine-auth/setup', async (req: Request, res: Response) => {
+    const clientIp = req.ip || 'unknown';
+    if (!checkRateLimit(authRateMap, clientIp, 5 * 60_000, 10)) {
+      res.status(429).json({
+        code: 'AUTH_RATE_LIMITED',
+        error: 'Too many authentication attempts. Please wait a few minutes.',
+      });
+      return;
+    }
+
+    try {
+      const existing = readLockStore();
+      if (existing) {
+        res.status(409).json({
+          code: 'PASSWORD_ALREADY_SET',
+          error: 'A privacy password is already configured. Unlock or change it instead.',
+        });
+        return;
+      }
+
+      const body = req.body as Record<string, unknown>;
+      const password = typeof body?.password === 'string' ? body.password : '';
+      if (password.length < 6 || password.length > 128) {
+        res.status(400).json({
+          code: 'WEAK_PASSWORD',
+          error: 'Password must be between 6 and 128 characters.',
+        });
+        return;
+      }
+
+      const { salt, hash } = await hashPassword(password);
+      const store: EngineLockStore = {
+        salt,
+        hash,
+        hmacSecret: crypto.randomBytes(32).toString('hex'),
+        tokenVersion: 1,
+        updatedAt: new Date().toISOString(),
+      };
+      writeLockStore(store);
+
+      const { token, expiresAt } = issueEngineToken(store);
+      res.status(201).json({
+        passwordConfigured: true,
+        unlocked: true,
+        token,
+        expiresAt,
+      });
+    } catch (err) {
+      console.error('Setup password error:', err);
+      res.status(500).json({
+        code: 'SETUP_FAILED',
+        error: 'Failed to create privacy password.',
+      });
+    }
+  });
+
+  app.post('/api/engine-auth/unlock', async (req: Request, res: Response) => {
+    const clientIp = req.ip || 'unknown';
+    if (!checkRateLimit(authRateMap, clientIp, 5 * 60_000, 10)) {
+      res.status(429).json({
+        code: 'AUTH_RATE_LIMITED',
+        error: 'Too many authentication attempts. Please wait a few minutes.',
+      });
+      return;
+    }
+
+    try {
+      const store = readLockStore();
+      if (!store) {
+        res.status(404).json({
+          code: 'PASSWORD_NOT_CONFIGURED',
+          error: 'No privacy password has been created yet.',
+        });
+        return;
+      }
+
+      const body = req.body as Record<string, unknown>;
+      const password = typeof body?.password === 'string' ? body.password : '';
+      if (!password || password.length > 128) {
+        res.status(401).json({
+          code: 'INVALID_PASSWORD',
+          error: 'Incorrect password.',
+        });
+        return;
+      }
+
+      const ok = await verifyPassword(password, store.salt, store.hash);
+      if (!ok) {
+        res.status(401).json({
+          code: 'INVALID_PASSWORD',
+          error: 'Incorrect password.',
+        });
+        return;
+      }
+
+      const { token, expiresAt } = issueEngineToken(store);
+      res.json({
+        passwordConfigured: true,
+        unlocked: true,
+        token,
+        expiresAt,
+      });
+    } catch (err) {
+      console.error('Unlock password error:', err);
+      res.status(500).json({
+        code: 'UNLOCK_FAILED',
+        error: 'Failed to verify password.',
+      });
+    }
+  });
+
+  app.post('/api/engine-auth/change-password', async (req: Request, res: Response) => {
+    const clientIp = req.ip || 'unknown';
+    if (!checkRateLimit(authRateMap, clientIp, 5 * 60_000, 10)) {
+      res.status(429).json({
+        code: 'AUTH_RATE_LIMITED',
+        error: 'Too many authentication attempts. Please wait a few minutes.',
+      });
+      return;
+    }
+
+    try {
+      const store = readLockStore();
+      if (!store) {
+        res.status(404).json({
+          code: 'PASSWORD_NOT_CONFIGURED',
+          error: 'No privacy password has been created yet.',
+        });
+        return;
+      }
+
+      const body = req.body as Record<string, unknown>;
+      const currentPassword = typeof body?.currentPassword === 'string' ? body.currentPassword : '';
+      const newPassword = typeof body?.newPassword === 'string' ? body.newPassword : '';
+
+      if (!currentPassword || currentPassword.length > 128) {
+        res.status(401).json({
+          code: 'INVALID_PASSWORD',
+          error: 'Current password is incorrect.',
+        });
+        return;
+      }
+
+      const ok = await verifyPassword(currentPassword, store.salt, store.hash);
+      if (!ok) {
+        res.status(401).json({
+          code: 'INVALID_PASSWORD',
+          error: 'Current password is incorrect.',
+        });
+        return;
+      }
+
+      if (newPassword.length < 6 || newPassword.length > 128) {
+        res.status(400).json({
+          code: 'WEAK_PASSWORD',
+          error: 'New password must be between 6 and 128 characters.',
+        });
+        return;
+      }
+
+      const { salt, hash } = await hashPassword(newPassword);
+      const updatedStore: EngineLockStore = {
+        salt,
+        hash,
+        hmacSecret: store.hmacSecret,
+        tokenVersion: store.tokenVersion + 1,
+        updatedAt: new Date().toISOString(),
+      };
+      writeLockStore(updatedStore);
+
+      const { token, expiresAt } = issueEngineToken(updatedStore);
+      res.json({
+        passwordConfigured: true,
+        unlocked: true,
+        token,
+        expiresAt,
+      });
+    } catch (err) {
+      console.error('Change password error:', err);
+      res.status(500).json({
+        code: 'CHANGE_PASSWORD_FAILED',
+        error: 'Failed to update password.',
+      });
+    }
+  });
+
+  app.post('/api/engine-auth/lock', (req: Request, res: Response) => {
+    const store = readLockStore();
+    if (store) {
+      const check = verifyEngineToken(req.header('x-engine-token'), store);
+      if (check.valid) {
+        writeLockStore({
+          ...store,
+          tokenVersion: store.tokenVersion + 1,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    }
+    res.json({
+      passwordConfigured: Boolean(store),
+      unlocked: false,
+      expiresAt: null,
+    });
+  });
+
   app.post('/api/generate', async (req: Request, res: Response) => {
     const clientIp = req.ip || 'unknown';
-    if (!checkRateLimit(clientIp)) {
+    if (!checkRateLimit(generateRateMap, clientIp, 60_000, 30)) {
       res.status(429).json({
         code: 'RATE_LIMITED',
         error: 'Too many requests. Please wait a minute before generating again.',
@@ -328,6 +698,31 @@ async function startServer() {
       }
 
       const provider: AiProvider = body.provider === 'deepseek' ? 'deepseek' : 'gemini';
+
+      // Enforce privacy password lock on AI engine selection & execution (Gemini & DeepSeek)
+      const store = readLockStore();
+      if (!store) {
+        res.status(403).json({
+          code: 'PASSWORD_SETUP_REQUIRED',
+          error: 'Create a privacy password before executing any AI engine.',
+        });
+        return;
+      }
+      const tokenCheck = verifyEngineToken(req.header('x-engine-token'), store);
+      if (!tokenCheck.valid) {
+        res.status(401).json({
+          code: 'ENGINE_LOCKED',
+          error: 'The AI engine is password-protected. Unlock it before executing.',
+        });
+        return;
+      }
+
+      const geminiThinkingLevel: GeminiThinkingLevel =
+        body.geminiThinkingLevel === 'LOW'
+          ? 'LOW'
+          : body.geminiThinkingLevel === 'MEDIUM'
+            ? 'MEDIUM'
+            : 'HIGH';
       const deepseekModel: DeepSeekModel =
         body.deepseekModel === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat';
       const rawTemp = typeof body.deepseekTemperature === 'number' ? body.deepseekTemperature : 0.7;
@@ -357,6 +752,7 @@ async function startServer() {
 
       const validatedInput: GenerateRequestBody = {
         provider,
+        geminiThinkingLevel,
         deepseekModel,
         deepseekTemperature,
         lang,
@@ -376,7 +772,7 @@ async function startServer() {
       const generated =
         provider === 'deepseek'
           ? await callDeepSeekProvider(systemInstruction, userPrompt, deepseekModel, deepseekTemperature)
-          : await callGeminiProvider(systemInstruction, userPrompt);
+          : await callGeminiProvider(systemInstruction, userPrompt, geminiThinkingLevel);
 
       res.json({
         ...generated,

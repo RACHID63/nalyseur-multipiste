@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Music, Share2, Send, Activity, Drum, Cpu, RefreshCw, AlertCircle, FileCode, LayoutDashboard, Copy, Check, Clock, Upload, Plus, Trash2, Mic2, Dices, Mic, Download, Info, Music4, Zap, Waves, Loader2, ShieldCheck
+  Music, Share2, Send, Activity, Drum, Cpu, RefreshCw, AlertCircle, FileCode, LayoutDashboard, Copy, Check, Clock, Upload, Plus, Trash2, Mic2, Dices, Mic, Download, Info, Music4, Zap, Waves, Loader2, ShieldCheck, Lock, Unlock, KeyRound, Eye, EyeOff
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -153,15 +153,57 @@ const App = () => {
       themePlaceholder: "Ex. L'Espace...",
       generateButton: "Générer l'Arrangement pour Suno AI",
       generating: "ANALYSE EXPERTE EN COURS...",
-      aiEngineLabel: "Moteur IA & Paramètre DeepSeek",
-      aiProviderGemini: "Gemini 4 Hydrogen (Serveur)",
+      aiEngineLabel: "Paramètres API (Gemini & DeepSeek) & Moteur IA",
+      engineDropdownLabel: "Menu déroulant de sélection du moteur IA",
+      engineDropdownPlaceholder: "🔒 -- Sélectionner Gemini ou DeepSeek (Mot de passe requis) --",
+      aiProviderGemini: "Gemini 4 Hydrogen (API Gemini)",
       aiProviderDeepSeek: "DeepSeek API (Serveur Sécurisé)",
+      apiSecretsPanelTitle: "Clés API Serveur (Settings > Secrets)",
+      apiSecretsPanelHint: "Les clés GEMINI_API_KEY et DEEPSEEK_API_KEY se configurent côté serveur via Settings > Secrets.",
+      geminiSecretLabel: "Clé API Gemini (GEMINI_API_KEY)",
+      deepseekSecretLabel: "Clé API DeepSeek (DEEPSEEK_API_KEY)",
+      geminiParamsTitle: "Paramètres API Gemini",
+      geminiModelLabel: "Modèle Gemini",
+      geminiThinkingLabel: "Niveau de réflexion (Thinking)",
+      geminiThinkingLow: "Rapide (LOW)",
+      geminiThinkingMedium: "Équilibré (MEDIUM)",
+      geminiThinkingHigh: "Approfondi (HIGH)",
+      deepseekParamsTitle: "Paramètres API DeepSeek",
       deepseekModelLabel: "Modèle DeepSeek",
       deepseekChatOption: "deepseek-chat (V3 - Rapide & JSON)",
       deepseekReasonerOption: "deepseek-reasoner (R1 - Raisonnement)",
       deepseekTempLabel: "Créativité (Température)",
-      serverSecretReady: "Clé serveur active",
-      serverSecretMissing: "Clé à configurer dans Settings > Secrets",
+      serverSecretReady: "Configurée",
+      serverSecretMissing: "À ajouter dans Settings > Secrets",
+      lockStatusUnlocked: "Moteur déverrouillé",
+      lockStatusLocked: "Moteur verrouillé",
+      lockStatusSetupNeeded: "Mot de passe à créer",
+      setupPasswordTitle: "Créer un mot de passe de confidentialité",
+      setupPasswordDesc: "Protégez la sélection et l'exécution des moteurs IA (Gemini et DeepSeek) par un mot de passe chiffré côté serveur.",
+      newPasswordPlaceholder: "Nouveau mot de passe (min. 6 caractères)",
+      confirmPasswordPlaceholder: "Confirmer le mot de passe",
+      createPasswordBtn: "Créer le mot de passe",
+      unlockTitle: "Sélection & exécution verrouillées",
+      unlockDesc: "Sélectionnez Gemini ou DeepSeek dans le menu déroulant ou saisissez votre mot de passe ci-dessous.",
+      enterPasswordPlaceholder: "Entrez votre mot de passe...",
+      unlockBtn: "Déverrouiller",
+      lockBtn: "Verrouiller",
+      changePasswordBtn: "Changer mot de passe",
+      currentPasswordPlaceholder: "Mot de passe actuel",
+      saveNewPasswordBtn: "Mettre à jour",
+      cancelBtn: "Annuler",
+      passwordMismatchError: "Les mots de passe ne correspondent pas.",
+      passwordTooShortError: "Le mot de passe doit contenir au moins 6 caractères.",
+      passwordInvalidError: "Mot de passe incorrect.",
+      passwordCreatedSuccess: "Mot de passe créé et moteur déverrouillé !",
+      passwordChangedSuccess: "Mot de passe mis à jour avec succès !",
+      errorEngineLocked: "Le moteur IA est verrouillé par mot de passe. Sélectionnez un moteur et saisissez le mot de passe avant d'exécuter.",
+      errorPasswordSetupRequired: "Veuillez d'abord créer un mot de passe de confidentialité avant d'utiliser un moteur IA.",
+      selectedEngineSummary: "Moteur actif",
+      selectEngineHint: "Sélectionnez Gemini ou DeepSeek dans le menu déroulant : un mot de passe est exigé à la sélection et au changement de moteur.",
+      modalSelectTitle: "Authentification du Moteur IA",
+      modalSelectSubtitle: "Mot de passe requis pour activer :",
+      closeModalBtn: "Fermer",
       errorWaitAudio: "Veuillez attendre la fin du traitement audio avant de générer.",
       errorNoRhythm: "Veuillez entrer au moins un motif rythmique pour l'un des instruments.",
       errorGemini: "Désolé, une erreur est survenue lors de la génération IA. Vérifiez votre configuration dans Settings > Secrets ou réessayez.",
@@ -323,15 +365,57 @@ const App = () => {
       themePlaceholder: "Ex. Outer Space...",
       generateButton: "Generate Suno AI Arrangement",
       generating: "EXPERT ANALYSIS IN PROGRESS...",
-      aiEngineLabel: "AI Engine & DeepSeek Parameter",
-      aiProviderGemini: "Gemini 4 Hydrogen (Server)",
+      aiEngineLabel: "API Parameters (Gemini & DeepSeek) & AI Engine",
+      engineDropdownLabel: "AI Engine Selection Dropdown",
+      engineDropdownPlaceholder: "🔒 -- Select Gemini or DeepSeek (Password Required) --",
+      aiProviderGemini: "Gemini 4 Hydrogen (Gemini API)",
       aiProviderDeepSeek: "DeepSeek API (Secure Server)",
+      apiSecretsPanelTitle: "Server API Keys (Settings > Secrets)",
+      apiSecretsPanelHint: "GEMINI_API_KEY and DEEPSEEK_API_KEY are configured server-side in Settings > Secrets.",
+      geminiSecretLabel: "Gemini API Key (GEMINI_API_KEY)",
+      deepseekSecretLabel: "DeepSeek API Key (DEEPSEEK_API_KEY)",
+      geminiParamsTitle: "Gemini API Parameters",
+      geminiModelLabel: "Gemini Model",
+      geminiThinkingLabel: "Thinking Level",
+      geminiThinkingLow: "Fast (LOW)",
+      geminiThinkingMedium: "Balanced (MEDIUM)",
+      geminiThinkingHigh: "Deep (HIGH)",
+      deepseekParamsTitle: "DeepSeek API Parameters",
       deepseekModelLabel: "DeepSeek Model",
       deepseekChatOption: "deepseek-chat (V3 - Fast & JSON)",
       deepseekReasonerOption: "deepseek-reasoner (R1 - Reasoning)",
       deepseekTempLabel: "Creativity (Temperature)",
-      serverSecretReady: "Server secret active",
-      serverSecretMissing: "Configure in Settings > Secrets",
+      serverSecretReady: "Configured",
+      serverSecretMissing: "Add in Settings > Secrets",
+      lockStatusUnlocked: "Engine Unlocked",
+      lockStatusLocked: "Engine Locked",
+      lockStatusSetupNeeded: "Password Required",
+      setupPasswordTitle: "Create a Privacy Password",
+      setupPasswordDesc: "Protect AI engine selection and execution (Gemini & DeepSeek) with a server-hashed access password.",
+      newPasswordPlaceholder: "New password (min. 6 characters)",
+      confirmPasswordPlaceholder: "Confirm password",
+      createPasswordBtn: "Create Password",
+      unlockTitle: "Selection & Execution Locked",
+      unlockDesc: "Select Gemini or DeepSeek in the dropdown or enter your password below.",
+      enterPasswordPlaceholder: "Enter your password...",
+      unlockBtn: "Unlock",
+      lockBtn: "Lock",
+      changePasswordBtn: "Change password",
+      currentPasswordPlaceholder: "Current password",
+      saveNewPasswordBtn: "Update",
+      cancelBtn: "Cancel",
+      passwordMismatchError: "Passwords do not match.",
+      passwordTooShortError: "Password must be at least 6 characters.",
+      passwordInvalidError: "Incorrect password.",
+      passwordCreatedSuccess: "Password created and engine unlocked!",
+      passwordChangedSuccess: "Password updated successfully!",
+      errorEngineLocked: "The AI engine is password-locked. Select an engine and enter your password before running.",
+      errorPasswordSetupRequired: "Please create a privacy password first before using an AI engine.",
+      selectedEngineSummary: "Active engine",
+      selectEngineHint: "Choose Gemini or DeepSeek from the dropdown: a password is required on selection or engine switch.",
+      modalSelectTitle: "AI Engine Authentication",
+      modalSelectSubtitle: "Password required to activate:",
+      closeModalBtn: "Close",
       errorWaitAudio: "Please wait for audio processing to finish before generating.",
       errorNoRhythm: "Please enter at least one rhythmic pattern for one of the instruments.",
       errorGemini: "Sorry, an error occurred during AI generation. Check Settings > Secrets or try again.",
@@ -471,9 +555,36 @@ const App = () => {
   const [isImportingFull, setIsImportingFull] = useState(false);
 
   const [aiProvider, setAiProvider] = useState<'gemini' | 'deepseek'>('gemini');
+  const [geminiThinkingLevel, setGeminiThinkingLevel] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('HIGH');
   const [deepseekModel, setDeepseekModel] = useState<'deepseek-chat' | 'deepseek-reasoner'>('deepseek-chat');
   const [deepseekTemperature, setDeepseekTemperature] = useState<number>(0.7);
   const [providerStatus, setProviderStatus] = useState<{ gemini: boolean; deepseek: boolean } | null>(null);
+
+  // Password protection state for AI engine selection & execution
+  const [engineToken, setEngineToken] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem('suno_engine_token') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [authStatus, setAuthStatus] = useState<{ passwordConfigured: boolean; unlocked: boolean; loading: boolean }>({
+    passwordConfigured: false,
+    unlocked: false,
+    loading: true,
+  });
+  const [setupPassInput, setSetupPassInput] = useState('');
+  const [setupPassConfirm, setSetupPassConfirm] = useState('');
+  const [unlockPassInput, setUnlockPassInput] = useState('');
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassInput, setCurrentPassInput] = useState('');
+  const [newPassInput, setNewPassInput] = useState('');
+  const [newPassConfirm, setNewPassConfirm] = useState('');
+  const [showPasswordChars, setShowPasswordChars] = useState(false);
+  const [authFeedback, setAuthFeedback] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [pendingProvider, setPendingProvider] = useState<'gemini' | 'deepseek' | null>(null);
   
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ style: string; lyrics: string; antiPrompt: string } | null>(null);
@@ -496,7 +607,192 @@ const App = () => {
         }
       })
       .catch(() => {});
+
+    const storedToken = (() => {
+      try {
+        return sessionStorage.getItem('suno_engine_token') || '';
+      } catch {
+        return '';
+      }
+    })();
+
+    fetch('/api/engine-auth/status', {
+      headers: storedToken ? { 'x-engine-token': storedToken } : {},
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          if (!data.unlocked && storedToken) {
+            try { sessionStorage.removeItem('suno_engine_token'); } catch {}
+            setEngineToken('');
+          }
+          setAuthStatus({
+            passwordConfigured: Boolean(data.passwordConfigured),
+            unlocked: Boolean(data.unlocked),
+            loading: false,
+          });
+        } else {
+          setAuthStatus((prev) => ({ ...prev, loading: false }));
+        }
+      })
+      .catch(() => {
+        setAuthStatus((prev) => ({ ...prev, loading: false }));
+      });
   }, []);
+
+  const persistEngineToken = (token: string) => {
+    setEngineToken(token);
+    try {
+      if (token) sessionStorage.setItem('suno_engine_token', token);
+      else sessionStorage.removeItem('suno_engine_token');
+    } catch {}
+  };
+
+  const handleSetupPassword = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setAuthFeedback(null);
+    if (setupPassInput.length < 6) {
+      setAuthFeedback({ type: 'error', text: cur.passwordTooShortError });
+      return;
+    }
+    if (setupPassInput !== setupPassConfirm) {
+      setAuthFeedback({ type: 'error', text: cur.passwordMismatchError });
+      return;
+    }
+
+    setAuthSubmitting(true);
+    try {
+      const res = await fetch('/api/engine-auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: setupPassInput }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setAuthFeedback({ type: 'error', text: data?.error || cur.passwordInvalidError });
+        return;
+      }
+      if (data?.token) persistEngineToken(data.token);
+      setAuthStatus({ passwordConfigured: true, unlocked: true, loading: false });
+      if (pendingProvider) {
+        setAiProvider(pendingProvider);
+        setPendingProvider(null);
+      }
+      setPasswordModalOpen(false);
+      setSetupPassInput('');
+      setSetupPassConfirm('');
+      setAuthFeedback({ type: 'success', text: cur.passwordCreatedSuccess });
+      setTimeout(() => setAuthFeedback(null), 4000);
+    } catch {
+      setAuthFeedback({ type: 'error', text: cur.errorGemini });
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const handleSelectProviderClick = (targetProvider: 'gemini' | 'deepseek') => {
+    setAuthFeedback(null);
+    if (!authStatus.unlocked || targetProvider !== aiProvider) {
+      setPendingProvider(targetProvider);
+      setUnlockPassInput('');
+      setPasswordModalOpen(true);
+      return;
+    }
+    setAiProvider(targetProvider);
+  };
+
+  const handleUnlockEngine = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setAuthFeedback(null);
+    if (!unlockPassInput) {
+      setAuthFeedback({ type: 'error', text: cur.passwordInvalidError });
+      return;
+    }
+
+    setAuthSubmitting(true);
+    try {
+      const res = await fetch('/api/engine-auth/unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: unlockPassInput }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setAuthFeedback({
+          type: 'error',
+          text: data?.code === 'INVALID_PASSWORD' ? cur.passwordInvalidError : (data?.error || cur.passwordInvalidError),
+        });
+        return;
+      }
+      if (data?.token) persistEngineToken(data.token);
+      setAuthStatus({ passwordConfigured: true, unlocked: true, loading: false });
+      if (pendingProvider) {
+        setAiProvider(pendingProvider);
+        setPendingProvider(null);
+      }
+      setPasswordModalOpen(false);
+      setUnlockPassInput('');
+      setError(null);
+    } catch {
+      setAuthFeedback({ type: 'error', text: cur.errorGemini });
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const handleLockEngine = async () => {
+    setAuthFeedback(null);
+    setShowChangePassword(false);
+    try {
+      await fetch('/api/engine-auth/lock', {
+        method: 'POST',
+        headers: engineToken ? { 'x-engine-token': engineToken } : {},
+      });
+    } catch {}
+    persistEngineToken('');
+    setAuthStatus((prev) => ({ ...prev, unlocked: false }));
+  };
+
+  const handleChangePassword = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setAuthFeedback(null);
+    if (newPassInput.length < 6) {
+      setAuthFeedback({ type: 'error', text: cur.passwordTooShortError });
+      return;
+    }
+    if (newPassInput !== newPassConfirm) {
+      setAuthFeedback({ type: 'error', text: cur.passwordMismatchError });
+      return;
+    }
+
+    setAuthSubmitting(true);
+    try {
+      const res = await fetch('/api/engine-auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: currentPassInput, newPassword: newPassInput }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setAuthFeedback({
+          type: 'error',
+          text: data?.code === 'INVALID_PASSWORD' ? cur.passwordInvalidError : (data?.error || cur.passwordInvalidError),
+        });
+        return;
+      }
+      if (data?.token) persistEngineToken(data.token);
+      setCurrentPassInput('');
+      setNewPassInput('');
+      setNewPassConfirm('');
+      setShowChangePassword(false);
+      setAuthFeedback({ type: 'success', text: cur.passwordChangedSuccess });
+      setTimeout(() => setAuthFeedback(null), 4000);
+    } catch {
+      setAuthFeedback({ type: 'error', text: cur.errorGemini });
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
 
   // Sync state values when language changes if they were defaults
   useEffect(() => {
@@ -1021,6 +1317,21 @@ const App = () => {
       return;
     }
 
+    if (!authStatus.passwordConfigured) {
+      setPendingProvider(aiProvider);
+      setPasswordModalOpen(true);
+      setError(cur.errorPasswordSetupRequired);
+      return;
+    }
+
+    if (!authStatus.unlocked) {
+      setPendingProvider(aiProvider);
+      setUnlockPassInput('');
+      setPasswordModalOpen(true);
+      setError(cur.errorEngineLocked);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setActiveReaction(null);
@@ -1045,13 +1356,19 @@ const App = () => {
     }
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (engineToken) {
+        headers['x-engine-token'] = engineToken;
+      }
+
       const response = await fetch('/api/generate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           provider: aiProvider,
+          geminiThinkingLevel,
           deepseekModel,
           deepseekTemperature,
           lang: currentLang,
@@ -1071,6 +1388,14 @@ const App = () => {
 
       if (!response.ok) {
         const code = data?.code;
+        if (code === 'ENGINE_LOCKED') {
+          persistEngineToken('');
+          setAuthStatus((prev) => ({ ...prev, unlocked: false }));
+          throw new Error(cur.errorEngineLocked);
+        }
+        if (code === 'PASSWORD_SETUP_REQUIRED') {
+          throw new Error(cur.errorPasswordSetupRequired);
+        }
         if (code === 'MISSING_DEEPSEEK_KEY') {
           throw new Error(cur.errorDeepSeekMissing);
         }
@@ -1517,73 +1842,387 @@ const App = () => {
                   </div>
                 </div>
 
-                {/* AI Provider & DeepSeek Parameter Block (Secure Server-Side Keys) */}
-                <div className="mt-6 pt-6 border-t border-black/10">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                {/* AI Engine Dropdown, Gemini/DeepSeek API Parameters & Privacy Password Lock */}
+                <div className="mt-6 pt-6 border-t border-black/10 space-y-5">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
                       <Cpu className="w-5 h-5 text-blue-950" />
                       <span className="text-[14px] font-black text-blue-950 uppercase tracking-widest">
                         {cur.aiEngineLabel}
                       </span>
                     </div>
-                    {providerStatus && (
-                      <div className="flex items-center gap-2 text-xs font-bold text-neutral-700 bg-white/60 px-3.5 py-1.5 rounded-xl border border-black/5">
-                        <ShieldCheck className={`w-4 h-4 ${(aiProvider === 'gemini' ? providerStatus.gemini : providerStatus.deepseek) ? 'text-emerald-600' : 'text-amber-600'}`} />
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Lock Status Badge */}
+                      <div className={`flex items-center gap-1.5 text-xs font-black px-3 py-1.5 rounded-xl border ${
+                        authStatus.passwordConfigured
+                          ? (authStatus.unlocked
+                              ? 'bg-emerald-100/90 text-emerald-900 border-emerald-300'
+                              : 'bg-red-100/90 text-red-900 border-red-300')
+                          : 'bg-amber-100/90 text-amber-900 border-amber-300'
+                      }`}>
+                        {authStatus.passwordConfigured
+                          ? (authStatus.unlocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />)
+                          : <KeyRound className="w-3.5 h-3.5" />}
                         <span>
-                          {(aiProvider === 'gemini' ? providerStatus.gemini : providerStatus.deepseek)
-                            ? cur.serverSecretReady
-                            : cur.serverSecretMissing}
+                          {authStatus.passwordConfigured
+                            ? (authStatus.unlocked ? cur.lockStatusUnlocked : cur.lockStatusLocked)
+                            : cur.lockStatusSetupNeeded}
                         </span>
                       </div>
-                    )}
+
+                      {authStatus.passwordConfigured && authStatus.unlocked && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setShowChangePassword(prev => !prev)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 hover:bg-white text-blue-950 rounded-xl text-xs font-black border border-black/10 shadow-sm transition-all cursor-pointer"
+                          >
+                            <KeyRound className="w-3.5 h-3.5" />
+                            {cur.changePasswordBtn}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleLockEngine}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white rounded-xl text-xs font-black shadow-sm transition-all cursor-pointer"
+                          >
+                            <Lock className="w-3.5 h-3.5" />
+                            {cur.lockBtn}
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-1.5">
-                      <select
-                        className="w-full bg-[#f5f5f7] text-neutral-800 rounded-xl px-4 py-3 border-2 border-black/5 focus:outline-none focus:border-blue-400 font-bold text-xs shadow-inner"
-                        value={aiProvider}
-                        onChange={(e) => setAiProvider(e.target.value as 'gemini' | 'deepseek')}
-                        aria-label={cur.aiEngineLabel}
-                      >
-                        <option value="gemini">{cur.aiProviderGemini}</option>
-                        <option value="deepseek">{cur.aiProviderDeepSeek}</option>
-                      </select>
+                  {/* Dropdown Menu for AI Engine Selection (Password Required for Gemini or DeepSeek) */}
+                  <div className="bg-white/55 rounded-2xl p-4 border border-black/10 shadow-inner space-y-2">
+                    <label
+                      htmlFor="ai-engine-select"
+                      className="flex items-center justify-between text-xs font-black text-blue-950 uppercase tracking-wider px-1"
+                    >
+                      <span>{cur.engineDropdownLabel}</span>
+                      {authStatus.unlocked && (
+                        <span className="text-[11px] font-black text-emerald-700 normal-case">
+                          {cur.selectedEngineSummary}: {aiProvider === 'deepseek' ? 'DeepSeek API' : 'Gemini 4 Hydrogen'}
+                        </span>
+                      )}
+                    </label>
+                    <select
+                      id="ai-engine-select"
+                      className="w-full bg-[#f5f5f7] text-neutral-900 rounded-xl px-4 py-3 border-2 border-black/10 focus:outline-none focus:border-blue-500 font-black text-xs shadow-inner cursor-pointer"
+                      value={authStatus.unlocked ? aiProvider : ''}
+                      onChange={(e) => {
+                        const chosen = e.target.value as 'gemini' | 'deepseek' | '';
+                        if (!chosen) return;
+                        handleSelectProviderClick(chosen);
+                      }}
+                    >
+                      {!authStatus.unlocked && (
+                        <option value="" disabled>
+                          {cur.engineDropdownPlaceholder}
+                        </option>
+                      )}
+                      <option value="gemini">{cur.aiProviderGemini}</option>
+                      <option value="deepseek">{cur.aiProviderDeepSeek}</option>
+                    </select>
+                    <p className="text-[11px] font-semibold text-neutral-700 px-1">{cur.selectEngineHint}</p>
+                  </div>
+
+                  {/* API Keys Status (Server Secrets) + Gemini & DeepSeek API Parameters */}
+                  <div className="bg-white/40 rounded-2xl p-4 border border-black/10 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-black/10">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-blue-900" />
+                        <span className="text-xs font-black text-blue-950 uppercase tracking-wider">
+                          {cur.apiSecretsPanelTitle}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-semibold text-neutral-600">
+                        {cur.apiSecretsPanelHint}
+                      </span>
                     </div>
 
-                    {aiProvider === 'deepseek' && (
-                      <>
-                        <div className="space-y-1.5">
-                          <select
-                            className="w-full bg-[#f5f5f7] text-neutral-800 rounded-xl px-4 py-3 border-2 border-black/5 focus:outline-none focus:border-blue-400 font-bold text-xs shadow-inner"
-                            value={deepseekModel}
-                            onChange={(e) => setDeepseekModel(e.target.value as 'deepseek-chat' | 'deepseek-reasoner')}
-                            aria-label={cur.deepseekModelLabel}
-                          >
-                            <option value="deepseek-chat">{cur.deepseekChatOption}</option>
-                            <option value="deepseek-reasoner">{cur.deepseekReasonerOption}</option>
-                          </select>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Gemini API Key Status & Parameters */}
+                      <div className={`rounded-2xl p-4 border transition-all space-y-3 ${
+                        authStatus.unlocked && aiProvider === 'gemini'
+                          ? 'bg-white border-blue-500 shadow-sm'
+                          : 'bg-[#f5f5f7]/90 border-black/10'
+                      }`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Cpu className="w-4 h-4 text-blue-700" />
+                            <span className="text-xs font-black text-blue-950 uppercase">{cur.geminiParamsTitle}</span>
+                          </div>
+                          {providerStatus && (
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg border ${
+                              providerStatus.gemini
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                : 'bg-amber-100 text-amber-800 border-amber-200'
+                            }`}>
+                              {providerStatus.gemini ? cur.serverSecretReady : cur.serverSecretMissing}
+                            </span>
+                          )}
                         </div>
 
-                        {deepseekModel === 'deepseek-chat' && (
-                          <div className="flex items-center gap-3 bg-[#f5f5f7] rounded-xl px-4 py-2.5 border-2 border-black/5 shadow-inner">
-                            <span className="text-xs font-black text-blue-950 whitespace-nowrap">
-                              {cur.deepseekTempLabel}: {deepseekTemperature.toFixed(1)}
-                            </span>
-                            <input
-                              type="range"
-                              min="0"
-                              max="1.5"
-                              step="0.1"
-                              value={deepseekTemperature}
-                              onChange={(e) => setDeepseekTemperature(parseFloat(e.target.value))}
-                              className="w-full accent-blue-600 cursor-pointer"
-                            />
+                        <div className="text-[11px] font-bold text-neutral-600 flex items-center justify-between bg-black/5 px-3 py-2 rounded-xl">
+                          <span>{cur.geminiSecretLabel}</span>
+                          <span className="font-mono text-[10px] text-neutral-800">GEMINI_API_KEY</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <div className="bg-white rounded-xl px-3 py-2 border border-black/10">
+                            <span className="block text-[10px] font-bold text-neutral-500 uppercase">{cur.geminiModelLabel}</span>
+                            <span className="text-xs font-black text-neutral-900">gemini-4-hydrogen</span>
                           </div>
-                        )}
-                      </>
-                    )}
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-black text-blue-950 uppercase px-1">
+                              {cur.geminiThinkingLabel}
+                            </label>
+                            <select
+                              className="w-full bg-white text-neutral-800 rounded-xl px-3 py-2 border border-black/10 focus:outline-none focus:border-blue-400 font-bold text-xs shadow-sm"
+                              value={geminiThinkingLevel}
+                              onChange={(e) => setGeminiThinkingLevel(e.target.value as 'LOW' | 'MEDIUM' | 'HIGH')}
+                              aria-label={cur.geminiThinkingLabel}
+                            >
+                              <option value="LOW">{cur.geminiThinkingLow}</option>
+                              <option value="MEDIUM">{cur.geminiThinkingMedium}</option>
+                              <option value="HIGH">{cur.geminiThinkingHigh}</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* DeepSeek API Key Status & Parameters */}
+                      <div className={`rounded-2xl p-4 border transition-all space-y-3 ${
+                        authStatus.unlocked && aiProvider === 'deepseek'
+                          ? 'bg-white border-blue-500 shadow-sm'
+                          : 'bg-[#f5f5f7]/90 border-black/10'
+                      }`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <Zap className="w-4 h-4 text-indigo-700" />
+                            <span className="text-xs font-black text-blue-950 uppercase">{cur.deepseekParamsTitle}</span>
+                          </div>
+                          {providerStatus && (
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg border ${
+                              providerStatus.deepseek
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                : 'bg-amber-100 text-amber-800 border-amber-200'
+                            }`}>
+                              {providerStatus.deepseek ? cur.serverSecretReady : cur.serverSecretMissing}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-[11px] font-bold text-neutral-600 flex items-center justify-between bg-black/5 px-3 py-2 rounded-xl">
+                          <span>{cur.deepseekSecretLabel}</span>
+                          <span className="font-mono text-[10px] text-neutral-800">DEEPSEEK_API_KEY</span>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-black text-blue-950 uppercase px-1">
+                              {cur.deepseekModelLabel}
+                            </label>
+                            <select
+                              className="w-full bg-white text-neutral-800 rounded-xl px-3 py-2 border border-black/10 focus:outline-none focus:border-blue-400 font-bold text-xs shadow-sm"
+                              value={deepseekModel}
+                              onChange={(e) => setDeepseekModel(e.target.value as 'deepseek-chat' | 'deepseek-reasoner')}
+                              aria-label={cur.deepseekModelLabel}
+                            >
+                              <option value="deepseek-chat">{cur.deepseekChatOption}</option>
+                              <option value="deepseek-reasoner">{cur.deepseekReasonerOption}</option>
+                            </select>
+                          </div>
+
+                          {deepseekModel === 'deepseek-chat' && (
+                            <div className="flex items-center gap-3 bg-white rounded-xl px-3 py-2 border border-black/10 shadow-sm">
+                              <span className="text-[11px] font-black text-blue-950 whitespace-nowrap">
+                                {cur.deepseekTempLabel}: {deepseekTemperature.toFixed(1)}
+                              </span>
+                              <input
+                                type="range"
+                                min="0"
+                                max="1.5"
+                                step="0.1"
+                                value={deepseekTemperature}
+                                onChange={(e) => setDeepseekTemperature(parseFloat(e.target.value))}
+                                className="w-full accent-blue-600 cursor-pointer"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Case 1: Create Password (when not yet configured) */}
+                  {!authStatus.loading && !authStatus.passwordConfigured && (
+                    <form
+                      onSubmit={handleSetupPassword}
+                      className="bg-[#f0f2f8] rounded-2xl p-4 border-2 border-blue-950/15 shadow-inner space-y-3"
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <KeyRound className="w-4 h-4 text-blue-900 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-black text-blue-950 uppercase tracking-wide">{cur.setupPasswordTitle}</p>
+                          <p className="text-[11px] font-semibold text-neutral-600 mt-0.5">{cur.setupPasswordDesc}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+                        <div className="relative">
+                          <input
+                            type={showPasswordChars ? 'text' : 'password'}
+                            placeholder={cur.newPasswordPlaceholder}
+                            value={setupPassInput}
+                            onChange={(e) => setSetupPassInput(e.target.value)}
+                            className="w-full bg-white text-neutral-900 rounded-xl px-3.5 py-2.5 pr-9 border border-black/10 text-xs font-bold focus:outline-none focus:border-blue-500"
+                            autoComplete="new-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPasswordChars(v => !v)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700"
+                            tabIndex={-1}
+                          >
+                            {showPasswordChars ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        <input
+                          type={showPasswordChars ? 'text' : 'password'}
+                          placeholder={cur.confirmPasswordPlaceholder}
+                          value={setupPassConfirm}
+                          onChange={(e) => setSetupPassConfirm(e.target.value)}
+                          className="w-full bg-white text-neutral-900 rounded-xl px-3.5 py-2.5 border border-black/10 text-xs font-bold focus:outline-none focus:border-blue-500"
+                          autoComplete="new-password"
+                        />
+                        <button
+                          type="submit"
+                          disabled={authSubmitting}
+                          className="w-full px-4 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                          {cur.createPasswordBtn}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Case 2: Unlock Engine (when password is configured and locked) */}
+                  {!authStatus.loading && authStatus.passwordConfigured && !authStatus.unlocked && (
+                    <form
+                      onSubmit={handleUnlockEngine}
+                      className="bg-neutral-900/95 text-white rounded-2xl p-4 border border-white/10 shadow-lg space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2.5">
+                          <Lock className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-wider text-amber-300">{cur.unlockTitle}</p>
+                            <p className="text-[11px] font-medium text-neutral-300 mt-0.5">
+                              {cur.unlockDesc} ({cur.selectedEngineSummary}: {aiProvider === 'deepseek' ? `DeepSeek / ${deepseekModel}` : 'Gemini 4 Hydrogen'})
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="relative flex-1">
+                          <input
+                            type={showPasswordChars ? 'text' : 'password'}
+                            placeholder={cur.enterPasswordPlaceholder}
+                            value={unlockPassInput}
+                            onChange={(e) => setUnlockPassInput(e.target.value)}
+                            className="w-full bg-black/50 text-white rounded-xl px-3.5 py-2.5 pr-9 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400 placeholder-neutral-500"
+                            autoComplete="current-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPasswordChars(v => !v)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
+                            tabIndex={-1}
+                          >
+                            {showPasswordChars ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={authSubmitting}
+                          className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl text-xs font-black uppercase tracking-wider shadow-md transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          <Unlock className="w-3.5 h-3.5" />
+                          {cur.unlockBtn}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Case 3: Change Password Drawer (when unlocked) */}
+                  {authStatus.passwordConfigured && authStatus.unlocked && showChangePassword && (
+                    <form
+                      onSubmit={handleChangePassword}
+                      className="bg-[#f0f2f8] rounded-2xl p-4 border border-black/10 shadow-inner space-y-3"
+                    >
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 items-center">
+                        <input
+                          type={showPasswordChars ? 'text' : 'password'}
+                          placeholder={cur.currentPasswordPlaceholder}
+                          value={currentPassInput}
+                          onChange={(e) => setCurrentPassInput(e.target.value)}
+                          className="w-full bg-white text-neutral-900 rounded-xl px-3.5 py-2 border border-black/10 text-xs font-bold focus:outline-none focus:border-blue-500"
+                          autoComplete="current-password"
+                        />
+                        <input
+                          type={showPasswordChars ? 'text' : 'password'}
+                          placeholder={cur.newPasswordPlaceholder}
+                          value={newPassInput}
+                          onChange={(e) => setNewPassInput(e.target.value)}
+                          className="w-full bg-white text-neutral-900 rounded-xl px-3.5 py-2 border border-black/10 text-xs font-bold focus:outline-none focus:border-blue-500"
+                          autoComplete="new-password"
+                        />
+                        <input
+                          type={showPasswordChars ? 'text' : 'password'}
+                          placeholder={cur.confirmPasswordPlaceholder}
+                          value={newPassConfirm}
+                          onChange={(e) => setNewPassConfirm(e.target.value)}
+                          className="w-full bg-white text-neutral-900 rounded-xl px-3.5 py-2 border border-black/10 text-xs font-bold focus:outline-none focus:border-blue-500"
+                          autoComplete="new-password"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={authSubmitting}
+                            className="flex-1 px-3 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-black transition-all disabled:opacity-50 cursor-pointer"
+                          >
+                            {cur.saveNewPasswordBtn}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowChangePassword(false);
+                              setCurrentPassInput('');
+                              setNewPassInput('');
+                              setNewPassConfirm('');
+                            }}
+                            className="px-3 py-2 bg-neutral-200 hover:bg-neutral-300 text-neutral-800 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                          >
+                            {cur.cancelBtn}
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  )}
+
+                  {authFeedback && (
+                    <div className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border ${
+                      authFeedback.type === 'error'
+                        ? 'bg-red-100 text-red-800 border-red-200'
+                        : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                    }`}>
+                      {authFeedback.type === 'error' ? <AlertCircle className="w-4 h-4 flex-shrink-0" /> : <Check className="w-4 h-4 flex-shrink-0" />}
+                      <span>{authFeedback.text}</span>
+                    </div>
+                  )}
                 </div>
               </section>
 
@@ -1721,6 +2360,141 @@ const App = () => {
           </div>
         </div>
       </div>
+
+      {/* Engine Password Authentication Modal */}
+      <AnimatePresence>
+        {passwordModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/75 backdrop-blur-sm"
+            onClick={() => {
+              setPasswordModalOpen(false);
+              setPendingProvider(null);
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 16 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.92, y: 16 }}
+              className="bg-neutral-900 border-2 border-white/15 w-full max-w-md rounded-3xl shadow-2xl p-6 md:p-8 text-white space-y-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center">
+                    <Lock className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black tracking-tight">{cur.modalSelectTitle}</h3>
+                    <p className="text-xs text-neutral-400 font-semibold">
+                      {cur.modalSelectSubtitle}{' '}
+                      <span className="text-amber-300 font-black">
+                        {(pendingProvider || aiProvider) === 'deepseek' ? 'DeepSeek API' : 'Gemini 4 Hydrogen'}
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasswordModalOpen(false);
+                    setPendingProvider(null);
+                  }}
+                  className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+                  aria-label={cur.closeModalBtn}
+                >
+                  <RefreshCw className="w-4 h-4 rotate-45" />
+                </button>
+              </div>
+
+              {!authStatus.passwordConfigured ? (
+                <form onSubmit={handleSetupPassword} className="space-y-3">
+                  <p className="text-xs text-neutral-300 leading-relaxed">{cur.setupPasswordDesc}</p>
+                  <div className="relative">
+                    <input
+                      type={showPasswordChars ? 'text' : 'password'}
+                      autoFocus
+                      placeholder={cur.newPasswordPlaceholder}
+                      value={setupPassInput}
+                      onChange={(e) => setSetupPassInput(e.target.value)}
+                      className="w-full bg-black/50 text-white rounded-xl px-4 py-3 pr-10 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordChars((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
+                      tabIndex={-1}
+                    >
+                      {showPasswordChars ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <input
+                    type={showPasswordChars ? 'text' : 'password'}
+                    placeholder={cur.confirmPasswordPlaceholder}
+                    value={setupPassConfirm}
+                    onChange={(e) => setSetupPassConfirm(e.target.value)}
+                    className="w-full bg-black/50 text-white rounded-xl px-4 py-3 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400"
+                    autoComplete="new-password"
+                  />
+                  {authFeedback && (
+                    <p className="text-xs font-bold text-red-400 flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      {authFeedback.text}
+                    </p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={authSubmitting}
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    {cur.createPasswordBtn}
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleUnlockEngine} className="space-y-3">
+                  <div className="relative">
+                    <input
+                      type={showPasswordChars ? 'text' : 'password'}
+                      autoFocus
+                      placeholder={cur.enterPasswordPlaceholder}
+                      value={unlockPassInput}
+                      onChange={(e) => setUnlockPassInput(e.target.value)}
+                      className="w-full bg-black/50 text-white rounded-xl px-4 py-3 pr-10 border border-white/15 text-xs font-bold focus:outline-none focus:border-amber-400"
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordChars((v) => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
+                      tabIndex={-1}
+                    >
+                      {showPasswordChars ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {authFeedback && (
+                    <p className="text-xs font-bold text-red-400 flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      {authFeedback.text}
+                    </p>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={authSubmitting}
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 rounded-xl text-xs font-black uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Unlock className="w-4 h-4" />
+                    {cur.unlockBtn}
+                  </button>
+                </form>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Help Modal */}
       <AnimatePresence>
